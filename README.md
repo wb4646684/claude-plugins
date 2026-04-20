@@ -8,19 +8,28 @@
 
 ## 快速安装
 
-```bash
+```
 # 1. 添加市场（只需一次）
 /plugin marketplace add wb4646684/claude-plugins
 
-# 2. 按需安装你要的插件
-/plugin install hap-mcp@claude-plugins
-/plugin install cos-mcp@claude-plugins
-/plugin install email-mcp@claude-plugins
-/plugin install oldoa-mcp@claude-plugins
-/plugin install context-optimize@claude-plugins
+# 2. 按需安装 + 初始化（三步完成）
+/plugin install hap-mcp@wb4646684-plugins
+/hap-mcp:setup
+
+/plugin install cos-mcp@wb4646684-plugins
+/cos-mcp:setup
+
+/plugin install email-mcp@wb4646684-plugins
+/email-mcp:setup
+
+/plugin install oldoa-mcp@wb4646684-plugins
+/oldoa-mcp:setup
+
+/plugin install context-optimize@wb4646684-plugins
+# context-optimize 无需初始化，装完即用
 ```
 
-各插件的详细配置步骤（凭据、环境变量等）见各自 README。
+每个插件安装完后运行对应的 `/xxx:setup`，Claude 会引导你完成凭据配置。
 
 ---
 
