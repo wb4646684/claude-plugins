@@ -144,9 +144,9 @@ function waitForCallbackCode(callbackUrl, timeoutMs = 120000) {
     port = parseInt(u.port || (u.protocol === 'https:' ? 443 : 80), 10);
     pathname = u.pathname;
   } catch (e) {
-    return Promise.reject(new Error(`无法解析回调 URL: ${callbackUrl}`));
+    throw new Error(`无法解析回调 URL: ${callbackUrl}`);
   }
-  if (port < 1024) return Promise.reject(new Error('端口 < 1024，需要 root，回退到手动粘贴'));
+  if (port < 1024) throw new Error('端口 < 1024，需要 root');
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
