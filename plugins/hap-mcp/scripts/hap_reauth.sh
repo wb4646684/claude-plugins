@@ -63,13 +63,24 @@ spinner() {
 
 # ---------- 主流程 ----------
 
-# 1. 检测已有 claude 会话，有就跳过（避免覆盖正在用的 token）
-RUNNING=$(pgrep -x claude 2>/dev/null | wc -l | tr -d ' ')
-if [ "${RUNNING:-0}" -gt 0 ]; then
-    header "$CYAN"
-    echo -e "  ${CYAN}⏭${RESET}  ${DIM}检测到 ${RUNNING} 个活跃会话，跳过刷新${RESET}"
-    echo ""
-    exit 0
+MARKER_FILE="${HAP_MCP_MARKER:-$(dirname "$CRED_FILE")/.last_refresh}"
+FRESH_SECONDS="${HAP_MCP_FRESH_SECS:-1800}"  # 默认 30 分钟内不重复刷新
+
+# 1. 如果 token 还新鲜（上次刷新 < FRESH_SECONDS），直接跳过
+if [ -f "$MARKER_FILE" ]; then
+    now=$(date +%s)
+    mtime=$(stat -f %m "$MARKER_FILE" 2>/dev/null || stat -c %Y "$MARKER_FILE" 2>/dev/null || echo 0)
+    age=$(( now - mtime ))
+    if [ "$age" -lt "$FRESH_SECONDS" ]; then
+        # 静默退出（作为 SessionStart hook 运行时，避免每次会话都打一堆输出）
+        if [ "${HAP_MCP_QUIET:-1}" = "1" ]; then
+            exit 0
+        fi
+        header "$CYAN"
+        echo -e "  ${CYAN}⏭${RESET}  ${DIM}token 还新鲜（${age}s 前刷过，阈值 ${FRESH_SECONDS}s）${RESET}"
+        echo ""
+        exit 0
+    fi
 fi
 
 header "$ORANGE"
@@ -77,9 +88,11 @@ header "$ORANGE"
 # 2. 加载凭据
 if [ ! -f "$CRED_FILE" ]; then
     die "凭据文件不存在" "路径：$CRED_FILE
-  请从插件目录复制 credentials.example 到该位置并填入加密凭据：
+  请先运行 setup.js 生成凭据文件：
+      node \"$(dirname "$0")/setup.js\"
+  或手动创建：
       mkdir -p \"$(dirname "$CRED_FILE")\"
-      cp <plugin>/scripts/credentials.example \"$CRED_FILE\"
+      cp \"$(dirname "$0")/credentials.example\" \"$CRED_FILE\"
       chmod 600 \"$CRED_FILE\""
 fi
 
@@ -159,6 +172,9 @@ PYEOF
 if [ $? -ne 0 ]; then
     die "写入 Claude 配置失败" "$CLAUDE_CONFIG"
 fi
+
+# 更新刷新时间戳
+touch "$MARKER_FILE" 2>/dev/null || true
 
 echo -e "  ${GREEN}✔${RESET}  ${BOLD}Token 已更新${RESET}  ${GRAY}${SESSION_ID:0:12}...${RESET}"
 echo ""
