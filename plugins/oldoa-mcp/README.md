@@ -34,19 +34,14 @@
 # 2. 装 Python 依赖
 pip3 install 'mcp[cli]>=1.0.0'
 
-# 3. 自动建应用 + 写凭据
+# 3. 一键全流程（建应用 + OAuth 授权 + 写所有凭据）
 node ~/.claude/plugins/cache/claude-plugins/plugins/oldoa-mcp/scripts/create_app.js
-#   → 交互输入明道账号/密码/应用名
-#   → 自动登录、创建应用、提取 APP_KEY/APP_SECRET、写入 ~/.config/oldoa/.env
+#   交互：账号、密码、应用名、回调 URL
+#   自动：登录 → 建应用 → 提取 APP_KEY/SECRET → 打开浏览器授权
+#   你只需：在浏览器里点"同意授权" → 复制地址栏的 code 粘回终端
+#   完事：~/.config/oldoa/{.env, .secrets.json} 全部写好
 
-# 4. OAuth 授权（拿 access_token）
-export PYTHONPATH=~/.claude/plugins/cache/claude-plugins/plugins/oldoa-mcp/server/src
-export OLDOA_CONFIG_DIR=~/.config/oldoa
-python3 -m oldoa.server authorize-url
-# → 浏览器打开输出的链接 → 点同意 → 复制地址栏里 code= 后面的值
-python3 -m oldoa.server exchange-code <code>
-
-# 5. 重启 Claude Code
+# 4. 重启 Claude Code
 ```
 
 插件路径随 Claude Code 版本略有差异，用
