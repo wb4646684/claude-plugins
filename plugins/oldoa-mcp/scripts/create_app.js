@@ -364,8 +364,25 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
   fs.writeFileSync(SECRETS_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
 }
 
+// ── CLI arg parsing ──────────────────────────────────────────────────────────
+function parseArgs(argv) {
+  const args = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if ((a === '--account' || a === '-u') && argv[i + 1]) { args.account = argv[++i]; }
+    else if ((a === '--password' || a === '-p') && argv[i + 1]) { args.password = argv[++i]; }
+    else if (a === '--oauth') { args.forceOauth = true; }
+    else if (a === '--new') { args.forceNew = true; }
+    else if ((a === '--app-name') && argv[i + 1]) { args.appName = argv[++i]; }
+  }
+  return args;
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 (async () => {
+  const cliArgs = parseArgs(process.argv.slice(2));
+  const nonInteractive = !!(cliArgs.account && cliArgs.password);
+
   console.log('');
   console.log(c.bold(c.cyan('◆ oldoa-mcp — 一键完成全部配置')));
   console.log(c.dim('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
@@ -381,14 +398,22 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
   const hasSecrets = fs.existsSync(SECRETS_FILE);
 
   let mode = 'full';   // full | oauth-only
-  if (hasValidEnv) {
+  if (cliArgs.forceOauth) {
+    mode = 'oauth-only';
+  } else if (cliArgs.forceNew) {
+    mode = 'full';
+  } else if (hasValidEnv) {
     console.log(c.dim(`检测到已有应用配置：${ENV_FILE}`));
     console.log(c.dim(`  APP_KEY:  ${existingEnv.MINGDAO_APP_KEY}`));
     console.log(c.dim(`  Callback: ${existingEnv.MINGDAO_REDIRECT_URI}`));
     if (hasSecrets) console.log(c.dim(`  已有 access_token，重跑 OAuth 即可续期`));
     console.log('');
 
-    if (hasSecrets) {
+    if (nonInteractive) {
+      // 非交互模式：有 .secrets.json 就只跑 OAuth，否则新建
+      mode = hasSecrets ? 'oauth-only' : 'full';
+      console.log(c.dim(`非交互模式，自动选择：${mode === 'oauth-only' ? '只跑 OAuth 续期' : '新建应用'}`));
+    } else if (hasSecrets) {
       // 已授权过：默认复用，选 n 才重建应用
       const ans = (await askVisible(c.yellow(
         '选择操作：\n'
@@ -419,15 +444,24 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
 
   if (mode === 'full') {
     try {
-      account = (await askVisible('明道账号（手机/邮箱）: ')).trim();
-      password = await askHidden('明道密码（不回显）: ');
-      const suggested = `${DEFAULT_APP_NAME}-${Date.now().toString(36).slice(-3)}`;
-      appName = (await askVisible(`应用名称（2-10字符）[默认: ${suggested}]: `)).trim() || suggested;
-      if (appName.length < 2 || appName.length > 10) {
-        console.log(c.red(`应用名称必须 2-10 字符（当前 ${appName.length}）`));
-        process.exit(1);
+      if (nonInteractive) {
+        account = cliArgs.account;
+        password = cliArgs.password;
+        const suggested = cliArgs.appName || `${DEFAULT_APP_NAME}-${Date.now().toString(36).slice(-3)}`;
+        appName = suggested;
+        callbackUrl = DEFAULT_CALLBACK_URL;
+        console.log(c.dim(`非交互模式：账号=${account}，应用名=${appName}，回调=${callbackUrl}`));
+      } else {
+        account = (await askVisible('明道账号（手机/邮箱）: ')).trim();
+        password = await askHidden('明道密码（不回显）: ');
+        const suggested = `${DEFAULT_APP_NAME}-${Date.now().toString(36).slice(-3)}`;
+        appName = (await askVisible(`应用名称（2-10字符）[默认: ${suggested}]: `)).trim() || suggested;
+        if (appName.length < 2 || appName.length > 10) {
+          console.log(c.red(`应用名称必须 2-10 字符（当前 ${appName.length}）`));
+          process.exit(1);
+        }
+        callbackUrl = (await askVisible(`OAuth 回调 URL [默认: ${DEFAULT_CALLBACK_URL}]: `)).trim() || DEFAULT_CALLBACK_URL;
       }
-      callbackUrl = (await askVisible(`OAuth 回调 URL [默认: ${DEFAULT_CALLBACK_URL}]: `)).trim() || DEFAULT_CALLBACK_URL;
     } catch (e) {
       console.log(c.red('\n已取消。'));
       process.exit(1);
