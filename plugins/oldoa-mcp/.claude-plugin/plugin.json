@@ -9,38 +9,6 @@
   "repository": "https://github.com/wb4646684/claude-plugins",
   "license": "MIT",
   "keywords": ["mingdao", "oa", "mcp", "calendar", "post"],
-  "userConfig": {
-    "app_key": {
-      "type": "string",
-      "title": "App Key",
-      "description": "OAuth App Key（在 open.mingdao.com 创建应用获取，或运行 node scripts/create_app.js 自动完成）",
-      "sensitive": true
-    },
-    "app_secret": {
-      "type": "string",
-      "title": "App Secret",
-      "description": "OAuth App Secret",
-      "sensitive": true
-    },
-    "redirect_uri": {
-      "type": "string",
-      "title": "Redirect URI",
-      "description": "OAuth 回调地址（创建应用时填写的，如 http://localhost:8080/callback）",
-      "sensitive": false
-    },
-    "access_token": {
-      "type": "string",
-      "title": "Access Token",
-      "description": "OAuth Access Token（运行 node scripts/create_app.js 完成授权后获取）",
-      "sensitive": true
-    },
-    "refresh_token": {
-      "type": "string",
-      "title": "Refresh Token",
-      "description": "OAuth Refresh Token（与 Access Token 同时获取，用于自动续期）",
-      "sensitive": true
-    }
-  },
   "mcpServers": {
     "oldoa": {
       "type": "stdio",
@@ -48,12 +16,7 @@
       "args": ["-m", "oldoa.server"],
       "env": {
         "PYTHONPATH": "${CLAUDE_PLUGIN_ROOT}/server/src",
-        "OLDOA_CONFIG_DIR": "${HOME}/.config/oldoa",
-        "MINGDAO_APP_KEY": "${user_config.app_key}",
-        "MINGDAO_APP_SECRET": "${user_config.app_secret}",
-        "MINGDAO_REDIRECT_URI": "${user_config.redirect_uri}",
-        "MINGDAO_ACCESS_TOKEN": "${user_config.access_token}",
-        "MINGDAO_REFRESH_TOKEN": "${user_config.refresh_token}"
+        "OLDOA_CONFIG_DIR": "${HOME}/.config/oldoa"
       }
     }
   }
