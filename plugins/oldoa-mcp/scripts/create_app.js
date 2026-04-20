@@ -386,14 +386,14 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
     console.log(c.dim(`  Callback: ${existingEnv.MINGDAO_REDIRECT_URI}\n`));
     const ans = (await askVisible(c.yellow(
       '选择操作：\n'
-      + '  [Enter/o] 跳过建应用，只跑 OAuth 授权（用现有 APP_KEY）\n'
-      + '  [n]       重新建应用 + 跑完整流程（会覆盖 .env 和 .secrets.json）\n'
+      + '  [Enter/n] 新建应用 + 跑完整流程（会覆盖 .env 和 .secrets.json）\n'
+      + '  [o]       跳过建应用，只跑 OAuth 授权（用现有 APP_KEY）\n'
       + '  [q]       取消退出\n'
-      + '请选择 [O/n/q]: '
+      + '请选择 [N/o/q]: '
     ))).trim().toLowerCase();
     if (ans === 'q') { console.log('已取消。'); process.exit(0); }
-    if (ans === 'n') { mode = 'full'; }
-    else { mode = 'oauth-only'; }
+    if (ans === 'o') { mode = 'oauth-only'; }
+    else { mode = 'full'; }
   }
 
   let sessionId, appId, appKey, appSecret, callbackUrl, account, password, appName;
