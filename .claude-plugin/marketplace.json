@@ -33,6 +33,14 @@
       "keywords": ["email", "smtp", "imap", "mcp"]
     },
     {
+      "name": "oldoa-mcp",
+      "source": "./plugins/oldoa-mcp",
+      "description": "明道协作 v1 API 精简 MCP：动态（post）+ 日程（calendar）",
+      "version": "1.0.0",
+      "category": "mcp",
+      "keywords": ["mingdao", "oa", "mcp", "calendar", "post"]
+    },
+    {
       "name": "context-optimize",
       "source": "./plugins/context-optimize",
       "description": "审查并优化 Claude Code 的 memory 和 skills 结构，避免 context 臃肿",

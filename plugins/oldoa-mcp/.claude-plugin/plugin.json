@@ -1,0 +1,12 @@
+{
+  "name": "oldoa-mcp",
+  "description": "明道协作 v1 API 精简 MCP：动态（post）+ 日程（calendar）",
+  "version": "1.0.0",
+  "author": {
+    "name": "Jeffrey"
+  },
+  "homepage": "https://github.com/wb4646684/claude-plugins/tree/main/plugins/oldoa-mcp",
+  "repository": "https://github.com/wb4646684/claude-plugins",
+  "license": "MIT",
+  "keywords": ["mingdao", "oa", "mcp", "calendar", "post"]
+}

@@ -16,6 +16,7 @@
 /plugin install hap-mcp@claude-plugins
 /plugin install cos-mcp@claude-plugins
 /plugin install email-mcp@claude-plugins
+/plugin install oldoa-mcp@claude-plugins
 /plugin install context-optimize@claude-plugins
 ```
 
@@ -78,6 +79,23 @@
 
 ---
 
+### 📅 oldoa-mcp — 明道协作（动态 + 日程）
+
+**能做什么**：让 Claude 直接操作明道协作的**动态**和**日程**两块功能。
+
+**典型场景**：
+- 「发一条动态：今天把 Gitlab 14 升级完了」→ 自动发布
+- 「帮我建明天下午 2 点的日程，和 A/B 讨论 xxx」→ 创建日程 + 邀请成员
+- 「这周有哪些待确认日程」→ 列出未回复邀请
+
+**工具**：动态 6 个 + 日程 10 个（新增/编辑/删除/查询/成员管理/搜索）
+
+**需要**：[明道开放平台](https://open.mingdao.com/) 注册应用拿 APP_KEY/SECRET，OAuth2 首次授权（README 有完整流程）
+
+👉 [详细安装文档](./plugins/oldoa-mcp/README.md)
+
+---
+
 ### 🧹 context-optimize — Claude 上下文审计
 
 **能做什么**：审查你积累的 memory + skills 结构，指出哪些内容太肿、哪些该拆、哪些该下沉到 `data/` 目录按需加载。
@@ -103,7 +121,8 @@
 | 1 | `context-optimize` | 低 | 没有凭据配置，装完即用 |
 | 2 | `email-mcp` | 中 | 只需邮箱授权码，5 分钟能跑通 |
 | 3 | `hap-mcp` | 中 | 需要浏览器抓 payload，但脚本一次配好受用很久 |
-| 4 | `cos-mcp` | 高 | 需要腾讯云账号和 bucket，第一次会花点时间 |
+| 4 | `oldoa-mcp` | 中高 | OAuth2 首次授权略繁琐（浏览器登录 + exchange code），之后自动 refresh |
+| 5 | `cos-mcp` | 高 | 需要腾讯云账号和 bucket，第一次会花点时间 |
 
 **新人建议**：先装 `context-optimize` 感受一下插件机制，再按实际需求装剩下的。没用到的就别装，`/plugin install` 随时可以补。
 
