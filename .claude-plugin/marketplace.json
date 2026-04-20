@@ -36,7 +36,7 @@
       "name": "oldoa-mcp",
       "source": "./plugins/oldoa-mcp",
       "description": "明道协作 v1 API 精简 MCP：动态（post）+ 日程（calendar）",
-      "version": "1.2.8",
+      "version": "1.2.9",
       "category": "mcp",
       "keywords": ["mingdao", "oa", "mcp", "calendar", "post"]
     },
