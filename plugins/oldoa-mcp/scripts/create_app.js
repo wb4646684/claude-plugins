@@ -378,22 +378,41 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
     && existingEnv.MINGDAO_APP_KEY
     && existingEnv.MINGDAO_APP_SECRET
     && existingEnv.MINGDAO_REDIRECT_URI;
+  const hasSecrets = fs.existsSync(SECRETS_FILE);
 
   let mode = 'full';   // full | oauth-only
   if (hasValidEnv) {
     console.log(c.dim(`检测到已有应用配置：${ENV_FILE}`));
     console.log(c.dim(`  APP_KEY:  ${existingEnv.MINGDAO_APP_KEY}`));
-    console.log(c.dim(`  Callback: ${existingEnv.MINGDAO_REDIRECT_URI}\n`));
-    const ans = (await askVisible(c.yellow(
-      '选择操作：\n'
-      + '  [Enter/n] 新建应用 + 跑完整流程（会覆盖 .env 和 .secrets.json）\n'
-      + '  [o]       跳过建应用，只跑 OAuth 授权（用现有 APP_KEY）\n'
-      + '  [q]       取消退出\n'
-      + '请选择 [N/o/q]: '
-    ))).trim().toLowerCase();
-    if (ans === 'q') { console.log('已取消。'); process.exit(0); }
-    if (ans === 'o') { mode = 'oauth-only'; }
-    else { mode = 'full'; }
+    console.log(c.dim(`  Callback: ${existingEnv.MINGDAO_REDIRECT_URI}`));
+    if (hasSecrets) console.log(c.dim(`  已有 access_token，重跑 OAuth 即可续期`));
+    console.log('');
+
+    if (hasSecrets) {
+      // 已授权过：默认复用，选 n 才重建应用
+      const ans = (await askVisible(c.yellow(
+        '选择操作：\n'
+        + '  [Enter/o] 只跑 OAuth 授权（续期 token，用现有 APP_KEY）\n'
+        + '  [n]       新建应用 + 跑完整流程（会覆盖 .env 和 .secrets.json）\n'
+        + '  [q]       取消退出\n'
+        + '请选择 [O/n/q]: '
+      ))).trim().toLowerCase();
+      if (ans === 'q') { console.log('已取消。'); process.exit(0); }
+      if (ans === 'n') { mode = 'full'; }
+      else { mode = 'oauth-only'; }
+    } else {
+      // 有 .env 但没授权过：默认新建，选 o 复用
+      const ans = (await askVisible(c.yellow(
+        '选择操作：\n'
+        + '  [Enter/n] 新建应用 + 跑完整流程（会覆盖 .env 和 .secrets.json）\n'
+        + '  [o]       跳过建应用，只跑 OAuth 授权（用现有 APP_KEY）\n'
+        + '  [q]       取消退出\n'
+        + '请选择 [N/o/q]: '
+      ))).trim().toLowerCase();
+      if (ans === 'q') { console.log('已取消。'); process.exit(0); }
+      if (ans === 'o') { mode = 'oauth-only'; }
+      else { mode = 'full'; }
+    }
   }
 
   let sessionId, appId, appKey, appSecret, callbackUrl, account, password, appName;
