@@ -1,7 +1,7 @@
 {
   "name": "email-mcp",
   "description": "通用 SMTP/IMAP 邮件 MCP server：发邮件（支持附件）、列邮件、读邮件正文/附件、搜索、标记已读",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": {
     "name": "Jeffrey"
   },

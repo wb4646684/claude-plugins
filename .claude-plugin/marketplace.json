@@ -12,25 +12,40 @@
       "name": "hap-mcp",
       "source": "./plugins/hap-mcp",
       "description": "明道云 HAP MCP 连接器（含 session token 自动刷新脚本）",
-      "version": "1.1.1",
+      "version": "1.1.2",
       "category": "mcp",
-      "keywords": ["hap", "mingdao", "mcp", "zero-code"]
+      "keywords": [
+        "hap",
+        "mingdao",
+        "mcp",
+        "zero-code"
+      ]
     },
     {
       "name": "cos-mcp",
       "source": "./plugins/cos-mcp",
       "description": "腾讯云 COS 临时文件中转 MCP（本地文件 → 公网 URL，用完即删）",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "category": "mcp",
-      "keywords": ["cos", "tencent-cloud", "mcp", "upload"]
+      "keywords": [
+        "cos",
+        "tencent-cloud",
+        "mcp",
+        "upload"
+      ]
     },
     {
       "name": "email-mcp",
       "source": "./plugins/email-mcp",
       "description": "通用 SMTP/IMAP 邮件 MCP（QQ/163/企业邮/Gmail/Outlook 均可）",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "category": "mcp",
-      "keywords": ["email", "smtp", "imap", "mcp"]
+      "keywords": [
+        "email",
+        "smtp",
+        "imap",
+        "mcp"
+      ]
     },
     {
       "name": "oldoa-mcp",
@@ -38,7 +53,13 @@
       "description": "明道协作 v1 API 精简 MCP：动态（post）+ 日程（calendar）",
       "version": "1.3.0",
       "category": "mcp",
-      "keywords": ["mingdao", "oa", "mcp", "calendar", "post"]
+      "keywords": [
+        "mingdao",
+        "oa",
+        "mcp",
+        "calendar",
+        "post"
+      ]
     },
     {
       "name": "context-optimize",
@@ -46,7 +67,12 @@
       "description": "审查并优化 Claude Code 的 memory 和 skills 结构，避免 context 臃肿",
       "version": "1.0.0",
       "category": "skills",
-      "keywords": ["context", "memory", "skills", "optimization"]
+      "keywords": [
+        "context",
+        "memory",
+        "skills",
+        "optimization"
+      ]
     }
   ]
 }

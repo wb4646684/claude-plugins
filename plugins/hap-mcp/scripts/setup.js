@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * hap-mcp interactive setup
+ * hap-mcp setup
  *
  * 把明文账号密码加密成 payload，并写入 ~/.config/hap-mcp/credentials。
- * 采用和明道前端完全一致的 RSA-1024 PKCS#1 v1.5 加密，加密结果可直接用于 MDAccountLogin API。
+ * 采用和明道前端完全一致的 RSA-1024 PKCS#1 v1.5 加密。
  *
- * 只在首次配置、或密码改了、或明道前端 RSA 公钥换了时需要跑。
+ * 支持非交互模式：node setup.js --account <账号> --password <密码>
  */
 'use strict';
 
@@ -16,7 +16,6 @@ const os = require('os');
 const https = require('https');
 const readline = require('readline');
 
-// 明道前端 login bundle 里提取的 RSA-1024 公钥
 const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC1xzCYtdu8bZEinh6Oh7/p+6xc
 ilHgV/ChU3bZXyezLQqf6mzOnLH6GVZMMDafMw3uMtljWyECCqnECy2UhZPa5BFc
@@ -24,22 +23,20 @@ qA2xbYH8/WyKTraCRJT3Hn61UrI4Eac4YVxa1CJ8KaTQtIeZBoXHIW0r5XyhBwYe
 NkSun+OFN+YBoJvCXwIDAQAB
 -----END PUBLIC KEY-----`;
 
-const CRED_DIR = process.env.HAP_MCP_CREDENTIALS
+const CRED_DIR  = process.env.HAP_MCP_CREDENTIALS
   ? path.dirname(process.env.HAP_MCP_CREDENTIALS)
   : path.join(os.homedir(), '.config', 'hap-mcp');
 const CRED_FILE = process.env.HAP_MCP_CREDENTIALS || path.join(CRED_DIR, 'credentials');
 
-// ── ANSI colors ─────────────────────────────────────────────────────────────
 const c = {
-  bold: s => `\x1b[1m${s}\x1b[0m`,
-  dim: s => `\x1b[2m${s}\x1b[0m`,
+  bold:  s => `\x1b[1m${s}\x1b[0m`,
+  dim:   s => `\x1b[2m${s}\x1b[0m`,
   green: s => `\x1b[32m${s}\x1b[0m`,
-  red: s => `\x1b[31m${s}\x1b[0m`,
-  cyan: s => `\x1b[36m${s}\x1b[0m`,
-  yellow: s => `\x1b[33m${s}\x1b[0m`,
+  red:   s => `\x1b[31m${s}\x1b[0m`,
+  cyan:  s => `\x1b[36m${s}\x1b[0m`,
+  yellow:s => `\x1b[33m${s}\x1b[0m`,
 };
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
 function encrypt(plaintext) {
   return crypto.publicEncrypt(
     { key: PUBLIC_KEY, padding: crypto.constants.RSA_PKCS1_PADDING },
@@ -56,7 +53,6 @@ function askHidden(prompt) {
   return new Promise((resolve, reject) => {
     process.stdout.write(prompt);
     if (!process.stdin.isTTY) {
-      // Non-TTY (piped stdin): fall back to visible line read
       const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
       rl.question('', a => { rl.close(); resolve(a); });
       return;
@@ -66,30 +62,10 @@ function askHidden(prompt) {
     process.stdin.setEncoding('utf8');
     let pw = '';
     const onData = ch => {
-      switch (ch) {
-        case '\u0003':  // Ctrl-C
-          process.stdout.write('\n');
-          process.stdin.setRawMode(false);
-          process.stdin.pause();
-          process.stdin.removeListener('data', onData);
-          reject(new Error('Cancelled'));
-          return;
-        case '\r':
-        case '\n':
-        case '\u0004':  // Ctrl-D
-          process.stdout.write('\n');
-          process.stdin.setRawMode(false);
-          process.stdin.pause();
-          process.stdin.removeListener('data', onData);
-          resolve(pw);
-          return;
-        case '\u007f':  // Backspace
-        case '\b':
-          if (pw.length) pw = pw.slice(0, -1);
-          return;
-        default:
-          pw += ch;
-      }
+      if (ch === '\u0003') { process.stdout.write('\n'); process.stdin.setRawMode(false); process.stdin.pause(); process.stdin.removeListener('data', onData); reject(new Error('Cancelled')); }
+      else if (ch === '\r' || ch === '\n' || ch === '\u0004') { process.stdout.write('\n'); process.stdin.setRawMode(false); process.stdin.pause(); process.stdin.removeListener('data', onData); resolve(pw); }
+      else if (ch === '\u007f' || ch === '\b') { if (pw.length) pw = pw.slice(0, -1); }
+      else { pw += ch; }
     };
     process.stdin.on('data', onData);
   });
@@ -99,21 +75,14 @@ function postJson(url, body) {
   const u = new URL(url);
   const payload = JSON.stringify(body);
   const opts = {
-    method: 'POST',
-    hostname: u.hostname,
-    path: u.pathname + u.search,
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(payload),
-    },
+    method: 'POST', hostname: u.hostname, path: u.pathname + u.search,
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
   };
   return new Promise((resolve, reject) => {
     const req = https.request(opts, res => {
       let data = '';
       res.on('data', c => (data += c));
-      res.on('end', () => {
-        try { resolve(JSON.parse(data)); } catch (e) { resolve({ raw: data }); }
-      });
+      res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { resolve({ raw: data }); } });
     });
     req.on('error', reject);
     req.write(payload);
@@ -121,8 +90,20 @@ function postJson(url, body) {
   });
 }
 
-// ── Main ────────────────────────────────────────────────────────────────────
+function parseArgs(argv) {
+  const args = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if ((a === '--account' || a === '-u') && argv[i+1]) { args.account  = argv[++i]; }
+    else if ((a === '--password' || a === '-p') && argv[i+1]) { args.password = argv[++i]; }
+  }
+  return args;
+}
+
 (async () => {
+  const cli = parseArgs(process.argv.slice(2));
+  const nonInteractive = !!(cli.account && cli.password);
+
   console.log('');
   console.log(c.bold(c.cyan('◆ hap-mcp setup')));
   console.log(c.dim('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
@@ -130,20 +111,27 @@ function postJson(url, body) {
   console.log(c.dim('密码只在内存里使用，不会写入任何文件或日志。\n'));
 
   let account, password;
-  try {
-    account = (await askVisible('账号（手机/邮箱）: ')).trim();
-    password = await askHidden('密码（输入不回显）: ');
-  } catch (e) {
-    console.log(c.red('\n已取消。'));
-    process.exit(1);
+  if (nonInteractive) {
+    account  = cli.account;
+    password = cli.password;
+    console.log(c.dim(`非交互模式：账号=${account}`));
+  } else {
+    try {
+      account  = (await askVisible('账号（手机/邮箱）: ')).trim();
+      password = await askHidden('密码（输入不回显）: ');
+    } catch (e) {
+      console.log(c.red('\n已取消。'));
+      process.exit(1);
+    }
   }
+
   if (!account || !password) {
     console.log(c.red('账号或密码为空。'));
     process.exit(1);
   }
 
   process.stdout.write(c.dim('正在加密并验证...'));
-  const encAccount = encrypt(account);
+  const encAccount  = encrypt(account);
   const encPassword = encrypt(password);
 
   let resp;
@@ -163,12 +151,10 @@ function postJson(url, body) {
     console.log('');
     console.log('常见原因：');
     console.log('  • 账号或密码错误');
-    console.log('  • 明道前端 RSA 公钥更新（极少发生，需要重新从 login 页提取）');
     console.log('  • 触发验证码（去网页手动登录一次后重试）');
     process.exit(2);
   }
 
-  // 写入凭据文件
   fs.mkdirSync(CRED_DIR, { recursive: true });
   const content = `# hap-mcp credentials — generated by setup.js on ${new Date().toISOString()}\n`
     + `HAP_LOGIN_ACCOUNT='${encAccount}'\n`
@@ -179,12 +165,7 @@ function postJson(url, body) {
   console.log(c.dim(`  sessionId: ${resp.data.sessionId.slice(0, 16)}...`));
   console.log(c.dim(`  凭据已写入：${CRED_FILE}`));
   console.log('');
-  console.log(c.bold('下一步：'));
-  console.log('  • 如果你已经通过 /plugin install 装过本插件，hap MCP 已就绪——直接启动 Claude 会自动');
-  console.log('    触发 SessionStart hook 刷新 sessionId。');
-  console.log('  • 首次使用建议重启 Claude Code 一次，让 MCP 配置重新加载。');
+  console.log(c.bold(c.green('✅ hap-mcp 配置完成')));
+  console.log(c.dim('重启 Claude Code 后 hap MCP 即可用，SessionStart hook 会自动刷新 sessionId。'));
   console.log('');
-})().catch(e => {
-  console.error(c.red('\n脚本异常：'), e);
-  process.exit(1);
-});
+})().catch(e => { console.error(c.red('\n脚本异常：'), e); process.exit(1); });

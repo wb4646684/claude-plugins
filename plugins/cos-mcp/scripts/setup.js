@@ -48,28 +48,51 @@ function askHidden(prompt) {
   });
 }
 
+function parseArgs(argv) {
+  const args = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--secret-id'  && argv[i+1]) { args.secretId  = argv[++i]; }
+    else if (a === '--secret-key' && argv[i+1]) { args.secretKey = argv[++i]; }
+    else if (a === '--bucket'     && argv[i+1]) { args.bucket    = argv[++i]; }
+    else if (a === '--region'     && argv[i+1]) { args.region    = argv[++i]; }
+  }
+  return args;
+}
+
 (async () => {
+  const cli = parseArgs(process.argv.slice(2));
+  const nonInteractive = !!(cli.secretId && cli.secretKey && cli.bucket);
+
   console.log('');
   console.log(c.bold(c.cyan('◆ cos-mcp — 配置向导')));
   console.log(c.dim('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
   console.log('需要：腾讯云子账号 SecretId / SecretKey + COS bucket 名称\n');
 
   let secretId, secretKey, bucket, region;
-  try {
-    secretId  = await askHidden('COS_SECRET_ID  （子账号 SecretId）');
-    secretKey = await askHidden('COS_SECRET_KEY （子账号 SecretKey）');
-    bucket    = await ask('COS_BUCKET     （如 my-bucket-1256981397）');
-    region    = await ask('COS_REGION', 'ap-shanghai');
-  } catch (e) {
-    console.log(c.red('\n已取消。'));
-    process.exit(1);
+  if (nonInteractive) {
+    secretId  = cli.secretId;
+    secretKey = cli.secretKey;
+    bucket    = cli.bucket;
+    region    = cli.region || 'ap-shanghai';
+    console.log(c.dim(`非交互模式：bucket=${bucket}，region=${region}`));
+  } else {
+    try {
+      secretId  = await askHidden('COS_SECRET_ID  （子账号 SecretId）');
+      secretKey = await askHidden('COS_SECRET_KEY （子账号 SecretKey）');
+      bucket    = await ask('COS_BUCKET     （如 my-bucket-1256981397）');
+      region    = await ask('COS_REGION', 'ap-shanghai');
+    } catch (e) {
+      console.log(c.red('\n已取消。'));
+      process.exit(1);
+    }
   }
+
   if (!secretId || !secretKey || !bucket) {
     console.log(c.red('SecretId / SecretKey / Bucket 均不能为空。'));
     process.exit(1);
   }
 
-  // 写入 ~/.claude.json
   process.stdout.write(c.dim('写入 ~/.claude.json ...'));
   let cfg = {};
   try { cfg = JSON.parse(fs.readFileSync(CLAUDE_JSON, 'utf-8')); } catch (e) {}

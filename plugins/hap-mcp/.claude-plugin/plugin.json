@@ -1,7 +1,7 @@
 {
   "name": "hap-mcp",
   "description": "明道云 HAP MCP 连接器（含 session token 自动刷新脚本）",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "author": {
     "name": "Jeffrey Zhang"
   },
