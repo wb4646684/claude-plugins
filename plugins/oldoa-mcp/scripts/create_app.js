@@ -577,6 +577,12 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
   }
 
   try {
+    process.stdout.write(c.dim('  [0/3] 获取账户信息 ...'));
+    const userResp = await apiGet('/v1/user/get_user_card', {});
+    if (!userResp?.user) throw new Error(`get_user_card 失败: ${JSON.stringify(userResp)}`);
+    const u = userResp.user;
+    process.stdout.write(`\r${c.green('  [0/3] ✔')} 当前账户：${c.bold(u.full_name || u.fullname || '未知')}${u.profession ? c.dim('（' + u.profession + '）') : ''}  ${c.dim(u.email || u.mobile_phone || '')}\n`);
+
     process.stdout.write(c.dim('  [1/3] 发布测试动态 ...'));
     const addResp = await apiPost('/v1/post/add_post', {
       post_msg: '[oldoa-mcp 自检] 这条动态由安装脚本自动发出，随即会被删除。',
