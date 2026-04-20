@@ -588,14 +588,14 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
 
     process.stdout.write(c.dim('  [2/3] 查询动态详情 ...'));
     const detailResp = await apiGet('/v1/post/get_post_detail', { post_id: postId });
-    if (!detailResp?.post?.post_id) throw new Error(`get_post_detail 失败: ${JSON.stringify(detailResp)}`);
-    const acct = detailResp.post.account || {};
+    if (!detailResp?.data?.post_id) throw new Error(`get_post_detail 失败: ${JSON.stringify(detailResp)}`);
+    const acct = detailResp.data.account || {};
     const acctDesc = [acct.full_name, acct.profession, acct.email || acct.mobile_phone].filter(Boolean).join('  ');
     process.stdout.write(`\r${c.green('  [2/3] ✔')} 当前账户：${c.bold(acctDesc || '未知')}\n`);
 
     process.stdout.write(c.dim('  [3/3] 删除测试动态 ...'));
     const delResp = await apiPost('/v1/post/delete_post', { post_id: postId });
-    if (!delResp?.result && delResp?.error_code !== 1) throw new Error(`delete_post 失败: ${JSON.stringify(delResp)}`);
+    if (!delResp?.success) throw new Error(`delete_post 失败: ${JSON.stringify(delResp)}`);
     process.stdout.write(`\r${c.green('  [3/3] ✔')} 动态已删除\n`);
 
     console.log('');
