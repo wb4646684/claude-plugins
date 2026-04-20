@@ -577,12 +577,6 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
   }
 
   try {
-    process.stdout.write(c.dim('  [0/3] 获取账户信息 ...'));
-    const userResp = await apiGet('/v1/user/get_user_card', {});
-    if (!userResp?.user) throw new Error(`get_user_card 失败: ${JSON.stringify(userResp)}`);
-    const u = userResp.user;
-    process.stdout.write(`\r${c.green('  [0/3] ✔')} 当前账户：${c.bold(u.full_name || u.fullname || '未知')}${u.profession ? c.dim('（' + u.profession + '）') : ''}  ${c.dim(u.email || u.mobile_phone || '')}\n`);
-
     process.stdout.write(c.dim('  [1/3] 发布测试动态 ...'));
     const addResp = await apiPost('/v1/post/add_post', {
       post_msg: '[oldoa-mcp 自检] 这条动态由安装脚本自动发出，随即会被删除。',
@@ -595,7 +589,9 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
     process.stdout.write(c.dim('  [2/3] 查询动态详情 ...'));
     const detailResp = await apiGet('/v1/post/get_post_detail', { post_id: postId });
     if (!detailResp?.post?.post_id) throw new Error(`get_post_detail 失败: ${JSON.stringify(detailResp)}`);
-    process.stdout.write(`\r${c.green('  [2/3] ✔')} 动态详情获取成功\n`);
+    const acct = detailResp.post.account || {};
+    const acctDesc = [acct.full_name, acct.profession, acct.email || acct.mobile_phone].filter(Boolean).join('  ');
+    process.stdout.write(`\r${c.green('  [2/3] ✔')} 当前账户：${c.bold(acctDesc || '未知')}\n`);
 
     process.stdout.write(c.dim('  [3/3] 删除测试动态 ...'));
     const delResp = await apiPost('/v1/post/delete_post', { post_id: postId });
