@@ -1,7 +1,7 @@
 {
   "name": "oldoa-mcp",
   "description": "明道协作 v1 API 精简 MCP：动态（post）+ 日程（calendar）",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "author": {
     "name": "Jeffrey"
   },
@@ -11,22 +11,32 @@
   "keywords": ["mingdao", "oa", "mcp", "calendar", "post"],
   "userConfig": {
     "app_key": {
+      "type": "string",
+      "title": "App Key",
       "description": "OAuth App Key（在 open.mingdao.com 创建应用获取，或运行 node scripts/create_app.js 自动完成）",
       "sensitive": false
     },
     "app_secret": {
+      "type": "string",
+      "title": "App Secret",
       "description": "OAuth App Secret",
       "sensitive": true
     },
     "redirect_uri": {
+      "type": "string",
+      "title": "Redirect URI",
       "description": "OAuth 回调地址（创建应用时填写的，如 http://localhost:8080/callback）",
       "sensitive": false
     },
     "access_token": {
+      "type": "string",
+      "title": "Access Token",
       "description": "OAuth Access Token（运行 node scripts/create_app.js 完成授权后获取）",
       "sensitive": true
     },
     "refresh_token": {
+      "type": "string",
+      "title": "Refresh Token",
       "description": "OAuth Refresh Token（与 Access Token 同时获取，用于自动续期）",
       "sensitive": true
     }
