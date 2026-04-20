@@ -94,6 +94,7 @@ elif [ -f "$CRED_FILE" ]; then
     if [ -z "$HAP_LOGIN_ACCOUNT" ] || [ -z "$HAP_LOGIN_PASSWORD" ]; then
         die "凭据为空" "请在 $CRED_FILE 里填入 HAP_LOGIN_ACCOUNT 和 HAP_LOGIN_PASSWORD"
     fi
+    export HAP_LOGIN_ACCOUNT HAP_LOGIN_PASSWORD
 else
     die "凭据未配置" "请通过插件配置填入 username 和 password，或运行 setup.js 生成凭据文件：
       node \"$(dirname "$0")/setup.js\""
