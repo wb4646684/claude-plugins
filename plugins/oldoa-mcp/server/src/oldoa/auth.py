@@ -138,8 +138,8 @@ def _get_stored_auth() -> dict[str, Any]:
         "app_key": secrets.get("app_key") or config["app_key"],
         "app_secret": secrets.get("app_secret") or config["app_secret"],
         "redirect_uri": secrets.get("redirect_uri") or config["redirect_uri"],
-        "access_token": secrets.get("access_token", ""),
-        "refresh_token": secrets.get("refresh_token", ""),
+        "access_token": secrets.get("access_token") or os.getenv("MINGDAO_ACCESS_TOKEN", ""),
+        "refresh_token": secrets.get("refresh_token") or os.getenv("MINGDAO_REFRESH_TOKEN", ""),
         "expires_at": secrets.get("expires_at", 0),
     }
 

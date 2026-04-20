@@ -6,13 +6,9 @@
 #   写入 ~/.claude.json 的 mcpServers.hap.url，
 #   避免 token 过期导致 HAP MCP 报 error_code: 10001。
 #
-# 使用方式：
-#   1. 复制 credentials.example 到 ~/.config/hap-mcp/credentials 并填入加密凭据
-#   2. 在 shell alias 里于 claude 启动前调用本脚本
-#
-# 凭据文件位置：
-#   默认 $HOME/.config/hap-mcp/credentials
-#   可通过环境变量 HAP_MCP_CREDENTIALS 覆盖
+# 凭据来源（按优先级）：
+#   1. 插件 userConfig 注入的环境变量 CLAUDE_PLUGIN_OPTION_USERNAME / CLAUDE_PLUGIN_OPTION_PASSWORD
+#   2. $HAP_MCP_CREDENTIALS 指向的凭据文件（默认 ~/.config/hap-mcp/credentials）
 
 set -uo pipefail
 
@@ -86,24 +82,21 @@ fi
 header "$ORANGE"
 
 # 2. 加载凭据
-if [ ! -f "$CRED_FILE" ]; then
-    die "凭据文件不存在" "路径：$CRED_FILE
-  请先运行 setup.js 生成凭据文件：
-      node \"$(dirname "$0")/setup.js\"
-  或手动创建：
-      mkdir -p \"$(dirname "$CRED_FILE")\"
-      cp \"$(dirname "$0")/credentials.example\" \"$CRED_FILE\"
-      chmod 600 \"$CRED_FILE\""
-fi
-
-# shellcheck disable=SC1090
-source "$CRED_FILE"
-
-: "${HAP_LOGIN_ACCOUNT:?凭据文件缺字段 HAP_LOGIN_ACCOUNT}"
-: "${HAP_LOGIN_PASSWORD:?凭据文件缺字段 HAP_LOGIN_PASSWORD}"
-
-if [ -z "$HAP_LOGIN_ACCOUNT" ] || [ -z "$HAP_LOGIN_PASSWORD" ]; then
-    die "凭据为空" "请在 $CRED_FILE 里填入 HAP_LOGIN_ACCOUNT 和 HAP_LOGIN_PASSWORD"
+# 优先使用插件 userConfig 注入的环境变量（安装后无需手动创建凭据文件）
+if [ -n "${CLAUDE_PLUGIN_OPTION_USERNAME:-}" ] && [ -n "${CLAUDE_PLUGIN_OPTION_PASSWORD:-}" ]; then
+    HAP_LOGIN_ACCOUNT="$CLAUDE_PLUGIN_OPTION_USERNAME"
+    HAP_LOGIN_PASSWORD="$CLAUDE_PLUGIN_OPTION_PASSWORD"
+elif [ -f "$CRED_FILE" ]; then
+    # shellcheck disable=SC1090
+    source "$CRED_FILE"
+    : "${HAP_LOGIN_ACCOUNT:?凭据文件缺字段 HAP_LOGIN_ACCOUNT}"
+    : "${HAP_LOGIN_PASSWORD:?凭据文件缺字段 HAP_LOGIN_PASSWORD}"
+    if [ -z "$HAP_LOGIN_ACCOUNT" ] || [ -z "$HAP_LOGIN_PASSWORD" ]; then
+        die "凭据为空" "请在 $CRED_FILE 里填入 HAP_LOGIN_ACCOUNT 和 HAP_LOGIN_PASSWORD"
+    fi
+else
+    die "凭据未配置" "请通过插件配置填入 username 和 password，或运行 setup.js 生成凭据文件：
+      node \"$(dirname "$0")/setup.js\""
 fi
 
 # 3. 调用登录接口

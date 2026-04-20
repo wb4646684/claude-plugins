@@ -12,7 +12,7 @@
       "name": "hap-mcp",
       "source": "./plugins/hap-mcp",
       "description": "明道云 HAP MCP 连接器（含 session token 自动刷新脚本）",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "category": "mcp",
       "keywords": ["hap", "mingdao", "mcp", "zero-code"]
     },
@@ -20,7 +20,7 @@
       "name": "cos-mcp",
       "source": "./plugins/cos-mcp",
       "description": "腾讯云 COS 临时文件中转 MCP（本地文件 → 公网 URL，用完即删）",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "category": "mcp",
       "keywords": ["cos", "tencent-cloud", "mcp", "upload"]
     },
@@ -28,7 +28,7 @@
       "name": "email-mcp",
       "source": "./plugins/email-mcp",
       "description": "通用 SMTP/IMAP 邮件 MCP（QQ/163/企业邮/Gmail/Outlook 均可）",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "category": "mcp",
       "keywords": ["email", "smtp", "imap", "mcp"]
     },
@@ -36,7 +36,7 @@
       "name": "oldoa-mcp",
       "source": "./plugins/oldoa-mcp",
       "description": "明道协作 v1 API 精简 MCP：动态（post）+ 日程（calendar）",
-      "version": "1.2.3",
+      "version": "1.2.4",
       "category": "mcp",
       "keywords": ["mingdao", "oa", "mcp", "calendar", "post"]
     },

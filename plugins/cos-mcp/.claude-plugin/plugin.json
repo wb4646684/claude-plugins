@@ -1,12 +1,48 @@
 {
   "name": "cos-mcp",
   "description": "腾讯云 COS 临时文件中转 MCP server（本地文件上传 → URL → 可传给其他需要 URL 的系统，如 HAP 附件字段）",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
     "name": "Jeffrey"
   },
   "homepage": "https://github.com/wb4646684/claude-plugins/tree/main/plugins/cos-mcp",
   "repository": "https://github.com/wb4646684/claude-plugins",
   "license": "MIT",
-  "keywords": ["cos", "tencent-cloud", "mcp", "upload", "attachment"]
+  "keywords": ["cos", "tencent-cloud", "mcp", "upload", "attachment"],
+  "userConfig": {
+    "secret_id": {
+      "description": "腾讯云子账号 SecretId（控制台 → 访问管理 → API密钥，建议用子账号而非主账号）",
+      "sensitive": true
+    },
+    "secret_key": {
+      "description": "腾讯云子账号 SecretKey",
+      "sensitive": true
+    },
+    "bucket": {
+      "description": "COS Bucket 名称，含 AppId（如 claude-temp-1256981397）",
+      "sensitive": false
+    },
+    "region": {
+      "description": "COS 区域（如 ap-shanghai / ap-beijing，默认 ap-shanghai）",
+      "sensitive": false
+    },
+    "prefix": {
+      "description": "上传路径前缀（默认 tmp）",
+      "sensitive": false
+    }
+  },
+  "mcpServers": {
+    "cos": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/server.py"],
+      "env": {
+        "COS_SECRET_ID": "${user_config.secret_id}",
+        "COS_SECRET_KEY": "${user_config.secret_key}",
+        "COS_BUCKET": "${user_config.bucket}",
+        "COS_REGION": "${user_config.region}",
+        "COS_PREFIX": "${user_config.prefix}"
+      }
+    }
+  }
 }
