@@ -1,0 +1,18 @@
+# Never commit real credentials
+credentials
+*.credentials
+!credentials.example
+*.env
+.env
+.env.*
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Local overrides
+*.local
