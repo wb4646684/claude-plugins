@@ -200,17 +200,26 @@ async function createApp({ sessionId, appName, callbackUrl }) {
 async function findAppByName(sessionId, appName) {
   const res = await httpRequest({
     method: 'GET',
-    url: 'https://open.mingdao.com/App/List',
-    headers: { 'Cookie': `md_pss_id=${sessionId}` },
+    url: 'https://open.mingdao.com/AppAjax/GetMyAppList?pIndex=1&pSize=50&pSort=0',
+    headers: {
+      'Cookie': `md_pss_id=${sessionId}`,
+      'X-Requested-With': 'XMLHttpRequest',
+      'Accept': 'application/json, text/javascript, */*; q=0.01',
+    },
   });
-  // 匹配 <a href="/App/<uuid>"...>APP_NAME</a>，取和 appName 一致的最新一个
-  const re = /href="\/App\/([a-f0-9-]{36})"[^>]*>\s*([^<\s][^<]*?)\s*</g;
-  const matches = [];
-  let m;
-  while ((m = re.exec(res.body))) matches.push({ id: m[1], name: m[2] });
-  const hit = matches.find(x => x.name === appName);
-  if (!hit) throw new Error(`无法在应用列表里找到 "${appName}"（共找到 ${matches.length} 个条目）`);
-  return hit.id;
+  // 响应是双层 encode 的 JSON：外层 JSON 字符串里又嵌了一层 JSON
+  let data;
+  try {
+    let parsed = JSON.parse(res.body);
+    if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+    data = parsed;
+  } catch (e) {
+    throw new Error(`GetMyAppList 响应不是 JSON: ${res.body.slice(0, 200)}`);
+  }
+  const apps = data.appList || [];
+  const hit = apps.find(a => a.AppName === appName);
+  if (!hit) throw new Error(`无法在应用列表里找到 "${appName}"（账号下共 ${apps.length} 个应用）`);
+  return hit.AppID;
 }
 
 async function fetchAppKeys(sessionId, appId) {
