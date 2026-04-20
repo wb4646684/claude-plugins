@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 /**
- * oldoa-mcp — OAuth 授权配置
+ * oldoa-mcp — 一键完成全部首次配置
  *
- * 使用共享应用 Claude-etz（APP_KEY 已内置），无需自建应用。
- * 首次运行：输入 APP_SECRET → 浏览器授权 → 存 access_token
- * 后续 token 过期：直接重跑，跳过 APP_SECRET 输入。
+ * [1] 登录 → [2] 创建应用 → [3] 查 appId → [4] 提取 APP_KEY/SECRET → 写 .env
+ * [5] 打开浏览器做 OAuth 授权 → [6] 粘 code → 换 access_token → 写 .secrets.json
+ *
+ * 明文密码只在内存里使用，不落盘不打日志。
  */
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -15,6 +17,13 @@ const https = require('https');
 const readline = require('readline');
 const { spawn } = require('child_process');
 
+// 明道前端 login bundle 里提取的 RSA-1024 公钥（和 hap-mcp 同一把）
+const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC1xzCYtdu8bZEinh6Oh7/p+6xc
+ilHgV/ChU3bZXyezLQqf6mzOnLH6GVZMMDafMw3uMtljWyECCqnECy2UhZPa5BFc
+qA2xbYH8/WyKTraCRJT3Hn61UrI4Eac4YVxa1CJ8KaTQtIeZBoXHIW0r5XyhBwYe
+NkSun+OFN+YBoJvCXwIDAQAB
+-----END PUBLIC KEY-----`;
 
 const CONFIG_DIR = process.env.OLDOA_CONFIG_DIR
   ? path.resolve(process.env.OLDOA_CONFIG_DIR.replace(/^~/, os.homedir()))
@@ -22,10 +31,12 @@ const CONFIG_DIR = process.env.OLDOA_CONFIG_DIR
 const ENV_FILE = path.join(CONFIG_DIR, '.env');
 const SECRETS_FILE = path.join(CONFIG_DIR, '.secrets.json');
 
-const FIXED_APP_KEY = 'D1C31A867CAA';   // Claude-etz（共享应用，无需自建）
-const FIXED_APP_NAME = 'Claude-etz';
+const DEFAULT_CATEGORY_ID = '1216f3e7-ace7-4ca5-81dc-a390425276c5';
 const DEFAULT_CALLBACK_URL = 'http://localhost/callback';
+const DEFAULT_APP_NAME = 'Claude';  // 最多 10 字符，脚本自动加短后缀保证唯一
 const MINGDAO_API = 'https://api.mingdao.com';
+// 明道访问数据字段：1=通讯录 2=消息 3=动态 4=任务 5=日程 6=知识 7=审批 8=考勤
+const ALL_MODULES = ',1,2,3,4,5,6,7,8,';
 
 // ── ANSI colors ─────────────────────────────────────────────────────────────
 const c = {
@@ -38,11 +49,52 @@ const c = {
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+function encrypt(plaintext) {
+  return crypto.publicEncrypt(
+    { key: PUBLIC_KEY, padding: crypto.constants.RSA_PKCS1_PADDING },
+    Buffer.from(plaintext, 'utf-8')
+  ).toString('base64');
+}
+
 function askVisible(prompt) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(r => rl.question(prompt, a => { rl.close(); r(a); }));
 }
 
+function askHidden(prompt) {
+  return new Promise((resolve, reject) => {
+    process.stdout.write(prompt);
+    if (!process.stdin.isTTY) {
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      rl.question('', a => { rl.close(); resolve(a); });
+      return;
+    }
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
+    let pw = '';
+    const onData = ch => {
+      if (ch === '\u0003') {
+        process.stdout.write('\n');
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+        process.stdin.removeListener('data', onData);
+        reject(new Error('Cancelled'));
+      } else if (ch === '\r' || ch === '\n' || ch === '\u0004') {
+        process.stdout.write('\n');
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+        process.stdin.removeListener('data', onData);
+        resolve(pw);
+      } else if (ch === '\u007f' || ch === '\b') {
+        if (pw.length) pw = pw.slice(0, -1);
+      } else {
+        pw += ch;
+      }
+    };
+    process.stdin.on('data', onData);
+  });
+}
 
 function httpRequest({ method = 'GET', url, headers = {}, body = null }) {
   const u = new URL(url);
@@ -100,6 +152,112 @@ function extractCode(input) {
 }
 
 // ── API wrappers ────────────────────────────────────────────────────────────
+async function login(account, password) {
+  const body = JSON.stringify({
+    account: encrypt(account),
+    password: encrypt(password),
+    isCookie: false,
+    captchaType: 0,
+  });
+  const res = await httpRequest({
+    method: 'POST',
+    url: 'https://www.mingdao.com/api/Login/MDAccountLogin',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  });
+  let json;
+  try { json = JSON.parse(res.body); } catch (e) { throw new Error(`Login 响应不是 JSON: ${res.body.slice(0, 200)}`); }
+  if (!json?.data?.sessionId) throw new Error(`登录失败: ${JSON.stringify(json).slice(0, 300)}`);
+  return json.data.sessionId;
+}
+
+async function createApp({ sessionId, appName, callbackUrl }) {
+  const fields = {
+    AppName: appName,
+    AppAbout: `${appName} - created by Claude Code plugin`,
+    AppDes: `Mingdao open platform app for oldoa-mcp (post + calendar). App name: ${appName}`,
+    IsPersonal: '1', AppCategoryID: DEFAULT_CATEGORY_ID,
+    IsPrivate: '1',  // 私有应用（只在开发者所在的网络可见，提交发布后立即可用，不需审核）
+    AppUrl: '', IsFree: '1', PricingType: '0', PricingMark: '',
+    NoticeUrl: '', SettingUrl: '', CalBackUrl: callbackUrl,
+    IosAppid: '', AndroidDownurl: '', AndroidPackage: '', AndroidActivity: '',
+    Avatar: '', AppType: '1', ImgList: '', Video_url: '', IsWeb: '1',
+    SubscibeUrl: '', appCode: '', appmdConnect: '', appCompanyName: '',
+    appContact: '', appEmail: '', urlscheme: '', H5Url: '',
+    modules: ALL_MODULES,  // 访问数据字段全选
+    webhook_url: '', ProjectID: '',
+  };
+  const body = new URLSearchParams(fields).toString();
+  const res = await httpRequest({
+    method: 'POST',
+    url: 'https://open.mingdao.com/AppAjax/ApplyApp',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'X-Requested-With': 'XMLHttpRequest',
+      'Cookie': `md_pss_id=${sessionId}`,
+      'Referer': 'https://open.mingdao.com/App/Add',
+    },
+    body,
+  });
+  let json;
+  try { json = JSON.parse(res.body); } catch (e) { throw new Error(`ApplyApp 响应不是 JSON: ${res.body.slice(0, 200)}`); }
+  if (json?.result !== '1' && json?.result !== 1) {
+    throw new Error(`ApplyApp 失败: ${JSON.stringify(json).slice(0, 300)}`);
+  }
+}
+
+async function enableTestMode(sessionId, appId) {
+  // 把应用设为"测试"状态（status=6）——开发者本人自动安装该应用，可立即走 OAuth 授权。
+  // 对应网页上"测试这个应用"按钮：ShowUpdateAppStatusDialog(6) → UpdateAppStatus?status=6
+  // （不是 status=4=提交发布，那是送审；测试状态才会在开发者账号下"安装"该应用）
+  const ts = Date.now();
+  const res = await httpRequest({
+    method: 'GET',
+    url: `https://open.mingdao.com/AppAjax/UpdateAppStatus?appID=${appId}&status=6&_=${ts}`,
+    headers: {
+      'Cookie': `md_pss_id=${sessionId}`,
+      'X-Requested-With': 'XMLHttpRequest',
+      'Accept': 'application/json, text/javascript, */*; q=0.01',
+      'Referer': `https://open.mingdao.com/App/${appId}`,
+    },
+  });
+  if (res.status !== 200) throw new Error(`UpdateAppStatus(test) 失败 status=${res.status}: ${res.body.slice(0, 200)}`);
+}
+
+async function findAppByName(sessionId, appName) {
+  const res = await httpRequest({
+    method: 'GET',
+    url: 'https://open.mingdao.com/AppAjax/GetMyAppList?pIndex=1&pSize=50&pSort=0',
+    headers: {
+      'Cookie': `md_pss_id=${sessionId}`,
+      'X-Requested-With': 'XMLHttpRequest',
+      'Accept': 'application/json, text/javascript, */*; q=0.01',
+    },
+  });
+  let data;
+  try {
+    let parsed = JSON.parse(res.body);
+    if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+    data = parsed;
+  } catch (e) { throw new Error(`GetMyAppList 响应不是 JSON: ${res.body.slice(0, 200)}`); }
+  const apps = data.appList || [];
+  const hit = apps.find(a => a.AppName === appName);
+  if (!hit) throw new Error(`无法在应用列表里找到 "${appName}"（账号下共 ${apps.length} 个应用）`);
+  return hit.AppID;
+}
+
+async function fetchAppKeys(sessionId, appId) {
+  const res = await httpRequest({
+    method: 'GET',
+    url: `https://open.mingdao.com/App/${appId}`,
+    headers: { 'Cookie': `md_pss_id=${sessionId}` },
+  });
+  const keyMatch = res.body.match(/id="txt_appConsumerKey"[^>]*value="([^"]+)"/);
+  const secMatch = res.body.match(/id="txt_appConsumerSecret"[^>]*value="([^"]+)"/);
+  if (!keyMatch || !secMatch) throw new Error('无法从应用详情页提取 APP_KEY / APP_SECRET');
+  return { appKey: keyMatch[1], appSecret: secMatch[1] };
+}
+
 async function exchangeCode({ appKey, appSecret, redirectUri, code }) {
   const params = new URLSearchParams({
     app_key: appKey, app_secret: appSecret,
@@ -156,39 +314,88 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
 // ── Main ────────────────────────────────────────────────────────────────────
 (async () => {
   console.log('');
-  console.log(c.bold(c.cyan('◆ oldoa-mcp — OAuth 授权配置')));
+  console.log(c.bold(c.cyan('◆ oldoa-mcp — 一键完成全部配置')));
   console.log(c.dim('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
-  console.log(`使用共享应用 ${c.bold(FIXED_APP_NAME)}（APP_KEY: ${c.dim(FIXED_APP_KEY)}）`);
-  console.log(c.dim('无需自建应用，直接走 OAuth 授权即可。\n'));
+  console.log('流程：登录 → 建应用 → 拉 APP_KEY/SECRET → 开启测试模式 → 浏览器授权 → 存 access_token');
+  console.log(c.dim('明文密码只在内存里使用，不落盘不打日志。\n'));
 
-  // 检测 .env 是否已有匹配的凭据
+  // 检测已有凭据 → 提供三种模式
   const existingEnv = parseEnvFile(ENV_FILE);
-  const needsSecret = !existingEnv
-    || existingEnv.MINGDAO_APP_KEY !== FIXED_APP_KEY
-    || !existingEnv.MINGDAO_APP_SECRET;
+  const hasValidEnv = existingEnv
+    && existingEnv.MINGDAO_APP_KEY
+    && existingEnv.MINGDAO_APP_SECRET
+    && existingEnv.MINGDAO_REDIRECT_URI;
 
-  let appKey = FIXED_APP_KEY;
-  let appSecret, callbackUrl;
+  let mode = 'full';   // full | oauth-only
+  if (hasValidEnv) {
+    console.log(c.dim(`检测到已有应用配置：${ENV_FILE}`));
+    console.log(c.dim(`  APP_KEY:  ${existingEnv.MINGDAO_APP_KEY}`));
+    console.log(c.dim(`  Callback: ${existingEnv.MINGDAO_REDIRECT_URI}\n`));
+    const ans = (await askVisible(c.yellow(
+      '选择操作：\n'
+      + '  [Enter/o] 跳过建应用，只跑 OAuth 授权（用现有 APP_KEY）\n'
+      + '  [n]       重新建应用 + 跑完整流程（会覆盖 .env 和 .secrets.json）\n'
+      + '  [q]       取消退出\n'
+      + '请选择 [O/n/q]: '
+    ))).trim().toLowerCase();
+    if (ans === 'q') { console.log('已取消。'); process.exit(0); }
+    if (ans === 'n') { mode = 'full'; }
+    else { mode = 'oauth-only'; }
+  }
 
-  if (needsSecret) {
-    console.log(c.yellow(`首次配置：需要输入 ${FIXED_APP_NAME} 的 APP_SECRET`));
-    console.log(c.dim('（APP_SECRET 只存在本机 ~/.config/oldoa/.env，不上传不落日志）\n'));
+  let sessionId, appId, appKey, appSecret, callbackUrl, account, password, appName;
+
+  if (mode === 'full') {
     try {
-      appSecret = (await askVisible('请输入 APP_SECRET: ')).trim();
+      account = (await askVisible('明道账号（手机/邮箱）: ')).trim();
+      password = await askHidden('明道密码（不回显）: ');
+      const suggested = `${DEFAULT_APP_NAME}-${Date.now().toString(36).slice(-3)}`;
+      appName = (await askVisible(`应用名称（2-10字符）[默认: ${suggested}]: `)).trim() || suggested;
+      if (appName.length < 2 || appName.length > 10) {
+        console.log(c.red(`应用名称必须 2-10 字符（当前 ${appName.length}）`));
+        process.exit(1);
+      }
       callbackUrl = (await askVisible(`OAuth 回调 URL [默认: ${DEFAULT_CALLBACK_URL}]: `)).trim() || DEFAULT_CALLBACK_URL;
     } catch (e) {
       console.log(c.red('\n已取消。'));
       process.exit(1);
     }
-    if (!appSecret) { console.log(c.red('APP_SECRET 不能为空。')); process.exit(1); }
-    writeEnv({ appKey, appSecret, callbackUrl });
-    console.log(c.green(`✔ .env 已写入 ${ENV_FILE}\n`));
+    if (!account || !password) { console.log(c.red('账号或密码为空。')); process.exit(1); }
+
+    try {
+      process.stdout.write(c.dim('[1/7] 登录 mingdao.com ...'));
+      sessionId = await login(account, password);
+      process.stdout.write(`\r${c.green('[1/7] ✔')} 登录成功${' '.repeat(40)}\n`);
+
+      process.stdout.write(c.dim('[2/7] 创建应用（私有 + 全模块权限）...'));
+      await createApp({ sessionId, appName, callbackUrl });
+      process.stdout.write(`\r${c.green('[2/7] ✔')} 应用已创建 ${c.dim(`"${appName}"`)}${' '.repeat(15)}\n`);
+
+      process.stdout.write(c.dim('[3/7] 查询应用 ID ...'));
+      appId = await findAppByName(sessionId, appName);
+      process.stdout.write(`\r${c.green('[3/7] ✔')} ${c.dim(`appId: ${appId}`)}${' '.repeat(20)}\n`);
+
+      process.stdout.write(c.dim('[4/7] 提取 APP_KEY / APP_SECRET ...'));
+      ({ appKey, appSecret } = await fetchAppKeys(sessionId, appId));
+      writeEnv({ appKey, appSecret, callbackUrl });
+      process.stdout.write(`\r${c.green('[4/7] ✔')} 凭据写入 ${c.dim(ENV_FILE)}${' '.repeat(5)}\n`);
+
+      process.stdout.write(c.dim('[5/7] 启用测试模式（开发者自安装）...'));
+      await enableTestMode(sessionId, appId);
+      process.stdout.write(`\r${c.green('[5/7] ✔')} 测试模式已开启（应用已在当前账号安装）${' '.repeat(5)}\n`);
+    } catch (e) {
+      console.log('');
+      console.log(c.red(`✘ ${e.message}`));
+      console.log(c.dim('\n登录失败：确认账号密码正确；触发验证码请先去网页登一次。'));
+      process.exit(2);
+    }
   } else {
+    // oauth-only: 复用现有 .env
+    appKey = existingEnv.MINGDAO_APP_KEY;
     appSecret = existingEnv.MINGDAO_APP_SECRET;
-    callbackUrl = existingEnv.MINGDAO_REDIRECT_URI || DEFAULT_CALLBACK_URL;
-    console.log(c.green('✔ 已有凭据，直接跑 OAuth 授权'));
-    console.log(c.dim(`  APP_KEY:  ${appKey}`));
-    console.log(c.dim(`  Callback: ${callbackUrl}\n`));
+    callbackUrl = existingEnv.MINGDAO_REDIRECT_URI;
+    console.log(c.green('✔ 复用现有 .env，跳过 [1/7]–[5/7]'));
+    console.log('');
   }
 
   // ── OAuth ────────────────────────────────────────────────────────────
@@ -196,7 +403,8 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
     app_key: appKey, redirect_uri: callbackUrl, state: 'mcp-auth',
   }).toString();
 
-  console.log(c.dim('[1/2] 浏览器授权'));
+  console.log('');
+  console.log(c.dim('[6/7] 需要你浏览器授权拿 access_token'));
   const opened = openBrowser(authUrl);
   if (opened) {
     console.log(c.dim('  已尝试自动打开浏览器。如未弹出，手动访问：'));
@@ -217,29 +425,37 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
     const raw = await askVisible(c.bold('粘贴 code（支持直接粘整个 URL）: '));
     code = extractCode(raw);
   } catch (e) {
-    console.log(c.red('已取消。'));
+    console.log(c.red('已取消。凭据已保存，你可以稍后手动跑 OAuth：python3 -m oldoa.server authorize-url'));
     process.exit(1);
   }
   if (!code) {
-    console.log(c.red('code 解析为空，请重试。'));
+    console.log(c.red('code 解析为空。凭据已保存，你可以稍后手动跑 OAuth。'));
     process.exit(1);
   }
 
   try {
-    process.stdout.write(c.dim('[2/2] 换取 access_token ...'));
+    process.stdout.write(c.dim('[7/7] 换取 access_token ...'));
     const resp = await exchangeCode({ appKey, appSecret, redirectUri: callbackUrl, code });
     writeSecrets({ appKey, appSecret, redirectUri: callbackUrl, resp });
     const expMin = Math.round((parseInt(resp.expires_in || 0, 10) || 0) / 60);
-    process.stdout.write(`\r${c.green('[2/2] ✔')} access_token 已保存 ${c.dim(`(${expMin} 分钟有效，自动 refresh)`)}${' '.repeat(5)}\n`);
+    process.stdout.write(`\r${c.green('[7/7] ✔')} access_token 已保存 ${c.dim(`(${expMin} 分钟有效，自动 refresh)`)}${' '.repeat(5)}\n`);
   } catch (e) {
     console.log('');
     console.log(c.red(`✘ ${e.message}`));
-    console.log(c.dim('\ncode 可能过期（每个 code 只用一次，几分钟内有效），请重跑脚本。'));
+    console.log(c.dim('\ncode 可能过期（每个 code 只用一次，几分钟内有效）。'));
+    console.log(c.dim('重试 OAuth：python3 -m oldoa.server authorize-url && python3 -m oldoa.server exchange-code <code>'));
     process.exit(2);
   }
 
   console.log('');
-  console.log(c.bold(c.green('✅ oldoa-mcp 全部就绪')));
+  console.log(c.bold(c.green('🎉 oldoa-mcp 全部就绪')));
+  console.log('');
+  console.log('应用信息：');
+  console.log(`  ${c.dim('Name:       ')}${appName}`);
+  console.log(`  ${c.dim('App ID:     ')}${appId}`);
+  console.log(`  ${c.dim('APP_KEY:    ')}${appKey}`);
+  console.log(`  ${c.dim('APP_SECRET: ')}${appSecret.slice(0, 6)}${c.dim('...（写入 .env，不回显）')}`);
+  console.log(`  ${c.dim('Callback:   ')}${callbackUrl}`);
   console.log('');
   console.log('配置文件：');
   console.log(`  ${c.dim(ENV_FILE)}`);

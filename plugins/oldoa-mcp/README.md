@@ -34,9 +34,11 @@
 # 2. 装 Python 依赖
 pip3 install 'mcp[cli]>=1.0.0'
 
-# 3. OAuth 授权（首次输入 APP_SECRET，后续自动跳过）
+# 3. 一键全流程（建应用 + OAuth 授权 + 写所有凭据）
 node ~/.claude/plugins/cache/claude-plugins/plugins/oldoa-mcp/scripts/create_app.js
-#   交互：首次输入 APP_SECRET → 浏览器里点"同意授权" → 复制 code 粘回终端
+#   交互：账号、密码、应用名、回调 URL
+#   自动：登录 → 建应用 → 提取 APP_KEY/SECRET → 打开浏览器授权
+#   你只需：在浏览器里点"同意授权" → 复制地址栏的 code 粘回终端
 #   完事：~/.config/oldoa/{.env, .secrets.json} 全部写好
 
 # 4. 重启 Claude Code
@@ -74,18 +76,19 @@ node ~/.claude/plugins/cache/claude-plugins/plugins/oldoa-mcp/scripts/create_app
 
 ## create_app.js 做了什么
 
-使用内置的共享应用 **Claude-etz**（APP_KEY 已固定），无需自建应用。
+1. 交互收集明文账号 + 密码 + 应用名 + 回调 URL（密码输入不回显）
+2. 本地 **RSA-1024 PKCS#1 v1.5** 加密凭据（用明道前端的公钥）
+3. POST `/api/Login/MDAccountLogin` → 拿 `sessionId`
+4. POST `/AppAjax/ApplyApp` → 创建应用
+5. GET `/App/List` → 匹配刚建的应用拿 app_id
+6. GET `/App/<app_id>` → 从 HTML 解析 `APP_KEY` / `APP_SECRET`
+7. 写入 `~/.config/oldoa/.env`，权限 `600`
 
-1. 检查 `~/.config/oldoa/.env` 是否已有凭据
-2. 首次运行：提示输入 `APP_SECRET`，写入 `.env`（权限 600）
-3. 打开浏览器走 OAuth 授权，提示粘贴 `code`
-4. 换取 `access_token`，写入 `.secrets.json`
-
-`APP_SECRET` **只存本机**，不上传不打日志。
+明文密码**只在内存里用过**，不落盘不打日志。
 
 只在以下情况重跑：
 - 新电脑/新机器首次配置
-- `refresh_token` 过期（很久没用）
+- 你在明道开放平台把应用删了
 
 ## OAuth Token 自动刷新
 
@@ -102,19 +105,20 @@ node ~/.claude/plugins/cache/claude-plugins/plugins/oldoa-mcp/scripts/create_app
 
 ## 手动安装（不想用 create_app.js）
 
-如果不想跑脚本，直接写配置文件：
+如果你宁愿手动 2 分钟点网页：
 
-```bash
-mkdir -p ~/.config/oldoa
-cat > ~/.config/oldoa/.env <<EOF
-MINGDAO_APP_KEY=D1C31A867CAA
-MINGDAO_APP_SECRET=<向管理员索取>
-MINGDAO_REDIRECT_URI=http://localhost/callback
-EOF
-chmod 600 ~/.config/oldoa/.env
-```
-
-然后跑脚本完成 OAuth 授权（脚本检测到 .env 存在会直接跳过输入步骤）。
+1. 去 <https://open.mingdao.com/> 建应用，拿 APP_KEY / APP_SECRET / 回调 URL
+2. 写入 `.env`：
+   ```bash
+   mkdir -p ~/.config/oldoa
+   cat > ~/.config/oldoa/.env <<EOF
+   MINGDAO_APP_KEY=<你的 APP_KEY>
+   MINGDAO_APP_SECRET=<你的 APP_SECRET>
+   MINGDAO_REDIRECT_URI=http://localhost/callback
+   EOF
+   chmod 600 ~/.config/oldoa/.env
+   ```
+3. 跑上述 "极简安装" 的第 4 步 OAuth 授权
 
 ## 故障排查
 
