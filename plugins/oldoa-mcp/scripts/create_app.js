@@ -11,6 +11,7 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const http = require('http');
 const path = require('path');
 const os = require('os');
 const https = require('https');
@@ -32,7 +33,7 @@ const ENV_FILE = path.join(CONFIG_DIR, '.env');
 const SECRETS_FILE = path.join(CONFIG_DIR, '.secrets.json');
 
 const DEFAULT_CATEGORY_ID = '1216f3e7-ace7-4ca5-81dc-a390425276c5';
-const DEFAULT_CALLBACK_URL = 'http://localhost/callback';
+const DEFAULT_CALLBACK_URL = 'http://localhost:9487/callback';
 const DEFAULT_APP_NAME = 'Claude';  // 最多 10 字符，脚本自动加短后缀保证唯一
 const MINGDAO_API = 'https://api.mingdao.com';
 // 明道访问数据字段：1=通讯录 2=消息 3=动态 4=任务 5=日程 6=知识 7=审批 8=考勤
@@ -134,6 +135,43 @@ function openBrowser(url) {
   } catch (e) {
     return false;
   }
+}
+
+function waitForCallbackCode(callbackUrl, timeoutMs = 120000) {
+  let port, pathname;
+  try {
+    const u = new URL(callbackUrl);
+    port = parseInt(u.port || (u.protocol === 'https:' ? 443 : 80), 10);
+    pathname = u.pathname;
+  } catch (e) {
+    return Promise.reject(new Error(`无法解析回调 URL: ${callbackUrl}`));
+  }
+  if (port < 1024) return Promise.reject(new Error('端口 < 1024，需要 root，回退到手动粘贴'));
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      server.close();
+      reject(new Error('等待授权超时（2 分钟）'));
+    }, timeoutMs);
+
+    const server = http.createServer((req, res) => {
+      const reqPath = req.url.split('?')[0];
+      if (reqPath !== pathname) { res.writeHead(404); res.end(); return; }
+      const code = new URL(req.url, callbackUrl).searchParams.get('code');
+      if (code) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px">'
+          + '<h2>✅ 授权成功</h2><p>可以关闭此页面，返回终端。</p></body></html>');
+        clearTimeout(timer);
+        server.close();
+        resolve(code);
+      } else {
+        res.writeHead(400); res.end('missing code');
+      }
+    });
+    server.on('error', e => { clearTimeout(timer); reject(e); });
+    server.listen(port, '127.0.0.1');
+  });
 }
 
 function extractCode(input) {
@@ -423,33 +461,47 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
   }).toString();
 
   console.log('');
-  console.log(c.dim('[7/8] 需要你浏览器授权拿 access_token'));
-  const opened = openBrowser(authUrl);
-  if (opened) {
-    console.log(c.dim('  已尝试自动打开浏览器。如未弹出，手动访问：'));
-  } else {
-    console.log(c.dim('  无法自动打开浏览器，请手动访问：'));
+  console.log(c.dim('[7/8] 浏览器授权'));
+
+  // 优先启动本地回调服务器自动捕获 code
+  let code;
+  let autoCapture = false;
+  let codePromise;
+  try {
+    codePromise = waitForCallbackCode(callbackUrl);
+    autoCapture = true;
+  } catch (e) {
+    // 端口 < 1024 等情况，回退到手动粘贴
   }
+
+  const opened = openBrowser(authUrl);
+  if (!opened) console.log(c.dim('  无法自动打开浏览器，请手动访问：'));
   console.log('  ' + c.cyan(authUrl));
   console.log('');
-  console.log('  浏览器里：');
-  console.log('    1. 登录（如未登录）');
-  console.log('    2. 点 ' + c.bold('"同意授权"'));
-  console.log(`    3. 会跳转到 ${callbackUrl}?code=XXXXXX&state=mcp-auth`);
-  console.log(c.dim('       （页面 404 没关系，只需要地址栏的 code= 后那串）'));
+  console.log('  浏览器里：登录 → 点 ' + c.bold('"同意授权"') + ' → 页面显示"授权成功"即可');
   console.log('');
 
-  let code;
-  try {
-    const raw = await askVisible(c.bold('粘贴 code（支持直接粘整个 URL）: '));
-    code = extractCode(raw);
-  } catch (e) {
-    console.log(c.red('已取消。凭据已保存，你可以稍后手动跑 OAuth：python3 -m oldoa.server authorize-url'));
-    process.exit(1);
+  if (autoCapture) {
+    process.stdout.write(c.dim('  等待浏览器回调...'));
+    try {
+      code = await codePromise;
+      process.stdout.write(`\r${c.green('  ✔ 已自动捕获 code')}${' '.repeat(20)}\n`);
+    } catch (e) {
+      process.stdout.write('\n');
+      console.log(c.yellow(`  自动捕获失败（${e.message}），切换为手动粘贴`));
+      autoCapture = false;
+    }
   }
-  if (!code) {
-    console.log(c.red('code 解析为空。凭据已保存，你可以稍后手动跑 OAuth。'));
-    process.exit(1);
+
+  if (!autoCapture) {
+    try {
+      const raw = await askVisible(c.bold('粘贴 code（支持直接粘整个 URL）: '));
+      code = extractCode(raw);
+    } catch (e) {
+      console.log(c.red('已取消。'));
+      process.exit(1);
+    }
+    if (!code) { console.log(c.red('code 解析为空，请重试。')); process.exit(1); }
   }
 
   try {
