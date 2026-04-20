@@ -1,7 +1,7 @@
 {
   "name": "oldoa-mcp",
   "description": "明道协作 v1 API 精简 MCP：动态（post）+ 日程（calendar）",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "author": {
     "name": "Jeffrey"
   },
@@ -14,7 +14,7 @@
       "type": "string",
       "title": "App Key",
       "description": "OAuth App Key（在 open.mingdao.com 创建应用获取，或运行 node scripts/create_app.js 自动完成）",
-      "sensitive": false
+      "sensitive": true
     },
     "app_secret": {
       "type": "string",
