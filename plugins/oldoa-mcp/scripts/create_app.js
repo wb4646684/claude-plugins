@@ -541,8 +541,8 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
   console.log(c.bold(c.green('🎉 oldoa-mcp 全部就绪')));
   console.log('');
   console.log('应用信息：');
-  console.log(`  ${c.dim('Name:       ')}${appName}`);
-  console.log(`  ${c.dim('App ID:     ')}${appId}`);
+  if (appName) console.log(`  ${c.dim('Name:       ')}${appName}`);
+  if (appId)   console.log(`  ${c.dim('App ID:     ')}${appId}`);
   console.log(`  ${c.dim('APP_KEY:    ')}${appKey}`);
   console.log(`  ${c.dim('APP_SECRET: ')}${appSecret.slice(0, 6)}${c.dim('...（写入 .env，不回显）')}`);
   console.log(`  ${c.dim('Callback:   ')}${callbackUrl}`);
@@ -582,8 +582,8 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
       post_msg: '[oldoa-mcp 自检] 这条动态由安装脚本自动发出，随即会被删除。',
       post_type: 0,
     });
-    if (!addResp?.post_id) throw new Error(`add_post 失败: ${JSON.stringify(addResp)}`);
-    const postId = addResp.post_id;
+    if (!addResp?.data?.post_id) throw new Error(`add_post 失败: ${JSON.stringify(addResp)}`);
+    const postId = addResp.data.post_id;
     process.stdout.write(`\r${c.green('  [1/3] ✔')} 动态已发布 ${c.dim(`post_id: ${postId}`)}\n`);
 
     process.stdout.write(c.dim('  [2/3] 查询动态详情 ...'));
