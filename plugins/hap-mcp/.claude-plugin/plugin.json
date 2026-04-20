@@ -8,15 +8,5 @@
   "homepage": "https://github.com/wb4646684/claude-plugins/tree/main/plugins/hap-mcp",
   "repository": "https://github.com/wb4646684/claude-plugins",
   "license": "MIT",
-  "keywords": ["hap", "mingdao", "mcp", "zero-code"],
-  "userConfig": {
-    "username": {
-      "description": "明道云账号（邮箱或手机号）",
-      "sensitive": false
-    },
-    "password": {
-      "description": "明道云登录密码",
-      "sensitive": true
-    }
-  }
+  "keywords": ["hap", "mingdao", "mcp", "zero-code"]
 }
