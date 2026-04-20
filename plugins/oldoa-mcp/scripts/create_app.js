@@ -207,9 +207,6 @@ async function createApp({ sessionId, appName, callbackUrl }) {
 }
 
 async function enableTestMode(sessionId, appId) {
-  // 把应用设为"测试"状态（status=6）——开发者本人自动安装该应用，可立即走 OAuth 授权。
-  // 对应网页上"测试这个应用"按钮：ShowUpdateAppStatusDialog(6) → UpdateAppStatus?status=6
-  // （不是 status=4=提交发布，那是送审；测试状态才会在开发者账号下"安装"该应用）
   const ts = Date.now();
   const res = await httpRequest({
     method: 'GET',
@@ -222,6 +219,24 @@ async function enableTestMode(sessionId, appId) {
     },
   });
   if (res.status !== 200) throw new Error(`UpdateAppStatus(test) 失败 status=${res.status}: ${res.body.slice(0, 200)}`);
+}
+
+async function installApp(sessionId, appId) {
+  const body = `appid=${encodeURIComponent(appId)}`;
+  const res = await httpRequest({
+    method: 'POST',
+    url: 'https://app.mingdao.com/App/Install?format=json',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'X-Requested-With': 'XMLHttpRequest',
+      'Cookie': `md_pss_id=${sessionId}`,
+      'Referer': `https://app.mingdao.com/?appID=${appId}`,
+    },
+    body,
+  });
+  let json;
+  try { json = JSON.parse(res.body); } catch (e) { throw new Error(`App/Install 响应不是 JSON: ${res.body.slice(0, 200)}`); }
+  if (!json?.result) throw new Error(`App/Install 失败: ${JSON.stringify(json).slice(0, 300)}`);
 }
 
 async function findAppByName(sessionId, appName) {
@@ -380,9 +395,13 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
       writeEnv({ appKey, appSecret, callbackUrl });
       process.stdout.write(`\r${c.green('[4/7] ✔')} 凭据写入 ${c.dim(ENV_FILE)}${' '.repeat(5)}\n`);
 
-      process.stdout.write(c.dim('[5/7] 启用测试模式（开发者自安装）...'));
+      process.stdout.write(c.dim('[5/8] 启用测试模式 ...'));
       await enableTestMode(sessionId, appId);
-      process.stdout.write(`\r${c.green('[5/7] ✔')} 测试模式已开启（应用已在当前账号安装）${' '.repeat(5)}\n`);
+      process.stdout.write(`\r${c.green('[5/8] ✔')} 测试模式已开启${' '.repeat(20)}\n`);
+
+      process.stdout.write(c.dim('[6/8] 安装应用到当前账号 ...'));
+      await installApp(sessionId, appId);
+      process.stdout.write(`\r${c.green('[6/8] ✔')} 应用已安装${' '.repeat(30)}\n`);
     } catch (e) {
       console.log('');
       console.log(c.red(`✘ ${e.message}`));
@@ -394,7 +413,7 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
     appKey = existingEnv.MINGDAO_APP_KEY;
     appSecret = existingEnv.MINGDAO_APP_SECRET;
     callbackUrl = existingEnv.MINGDAO_REDIRECT_URI;
-    console.log(c.green('✔ 复用现有 .env，跳过 [1/7]–[5/7]'));
+    console.log(c.green('✔ 复用现有 .env，跳过 [1/8]–[6/8]'));
     console.log('');
   }
 
@@ -404,7 +423,7 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
   }).toString();
 
   console.log('');
-  console.log(c.dim('[6/7] 需要你浏览器授权拿 access_token'));
+  console.log(c.dim('[7/8] 需要你浏览器授权拿 access_token'));
   const opened = openBrowser(authUrl);
   if (opened) {
     console.log(c.dim('  已尝试自动打开浏览器。如未弹出，手动访问：'));
@@ -434,11 +453,11 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
   }
 
   try {
-    process.stdout.write(c.dim('[7/7] 换取 access_token ...'));
+    process.stdout.write(c.dim('[8/8] 换取 access_token ...'));
     const resp = await exchangeCode({ appKey, appSecret, redirectUri: callbackUrl, code });
     writeSecrets({ appKey, appSecret, redirectUri: callbackUrl, resp });
     const expMin = Math.round((parseInt(resp.expires_in || 0, 10) || 0) / 60);
-    process.stdout.write(`\r${c.green('[7/7] ✔')} access_token 已保存 ${c.dim(`(${expMin} 分钟有效，自动 refresh)`)}${' '.repeat(5)}\n`);
+    process.stdout.write(`\r${c.green('[8/8] ✔')} access_token 已保存 ${c.dim(`(${expMin} 分钟有效，自动 refresh)`)}${' '.repeat(5)}\n`);
   } catch (e) {
     console.log('');
     console.log(c.red(`✘ ${e.message}`));
