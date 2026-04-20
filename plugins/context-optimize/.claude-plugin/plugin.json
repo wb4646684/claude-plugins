@@ -1,0 +1,12 @@
+{
+  "name": "context-optimize",
+  "description": "审查并优化 Claude Code 的 memory 和 skills 结构，让 context 保持轻量、按需加载",
+  "version": "1.0.0",
+  "author": {
+    "name": "Jeffrey"
+  },
+  "homepage": "https://github.com/wb4646684/claude-plugins/tree/main/plugins/context-optimize",
+  "repository": "https://github.com/wb4646684/claude-plugins",
+  "license": "MIT",
+  "keywords": ["context", "memory", "skills", "optimization"]
+}

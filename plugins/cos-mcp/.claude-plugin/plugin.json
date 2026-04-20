@@ -1,0 +1,12 @@
+{
+  "name": "cos-mcp",
+  "description": "腾讯云 COS 临时文件中转 MCP server（本地文件上传 → URL → 可传给其他需要 URL 的系统，如 HAP 附件字段）",
+  "version": "1.0.0",
+  "author": {
+    "name": "Jeffrey"
+  },
+  "homepage": "https://github.com/wb4646684/claude-plugins/tree/main/plugins/cos-mcp",
+  "repository": "https://github.com/wb4646684/claude-plugins",
+  "license": "MIT",
+  "keywords": ["cos", "tencent-cloud", "mcp", "upload", "attachment"]
+}

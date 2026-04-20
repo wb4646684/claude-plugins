@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "email": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/index.js"],
+      "env": {
+        "SMTP_HOST": "${SMTP_HOST}",
+        "SMTP_PORT": "${SMTP_PORT:-465}",
+        "SMTP_SSL": "${SMTP_SSL:-true}",
+        "SMTP_USER": "${SMTP_USER}",
+        "SMTP_PASS": "${SMTP_PASS}",
+        "DISPLAY_NAME": "${DISPLAY_NAME}",
+        "IMAP_HOST": "${IMAP_HOST}",
+        "IMAP_PORT": "${IMAP_PORT:-993}",
+        "IMAP_SSL": "${IMAP_SSL:-true}",
+        "IMAP_USER": "${IMAP_USER}",
+        "IMAP_PASS": "${IMAP_PASS}"
+      }
+    }
+  }
+}
