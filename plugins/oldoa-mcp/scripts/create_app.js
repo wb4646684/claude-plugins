@@ -33,8 +33,10 @@ const SECRETS_FILE = path.join(CONFIG_DIR, '.secrets.json');
 
 const DEFAULT_CATEGORY_ID = '1216f3e7-ace7-4ca5-81dc-a390425276c5';
 const DEFAULT_CALLBACK_URL = 'http://localhost/callback';
-const DEFAULT_APP_NAME = 'Claude-oldoa';
+const DEFAULT_APP_NAME = 'Claude';  // 最多 10 字符，脚本自动加短后缀保证唯一
 const MINGDAO_API = 'https://api.mingdao.com';
+// 明道访问数据字段：1=通讯录 2=消息 3=动态 4=任务 5=日程 6=知识 7=审批 8=考勤
+const ALL_MODULES = ',1,2,3,4,5,6,7,8,';
 
 // ── ANSI colors ─────────────────────────────────────────────────────────────
 const c = {
@@ -174,14 +176,16 @@ async function createApp({ sessionId, appName, callbackUrl }) {
     AppName: appName,
     AppAbout: `${appName} - created by Claude Code plugin`,
     AppDes: `Mingdao open platform app for oldoa-mcp (post + calendar). App name: ${appName}`,
-    IsPersonal: '1', AppCategoryID: DEFAULT_CATEGORY_ID, IsPrivate: '0',
+    IsPersonal: '1', AppCategoryID: DEFAULT_CATEGORY_ID,
+    IsPrivate: '1',  // 私有应用（只在开发者所在的网络可见，提交发布后立即可用，不需审核）
     AppUrl: '', IsFree: '1', PricingType: '0', PricingMark: '',
     NoticeUrl: '', SettingUrl: '', CalBackUrl: callbackUrl,
     IosAppid: '', AndroidDownurl: '', AndroidPackage: '', AndroidActivity: '',
     Avatar: '', AppType: '1', ImgList: '', Video_url: '', IsWeb: '1',
     SubscibeUrl: '', appCode: '', appmdConnect: '', appCompanyName: '',
     appContact: '', appEmail: '', urlscheme: '', H5Url: '',
-    modules: ',', webhook_url: '', ProjectID: '',
+    modules: ALL_MODULES,  // 访问数据字段全选
+    webhook_url: '', ProjectID: '',
   };
   const body = new URLSearchParams(fields).toString();
   const res = await httpRequest({
@@ -200,6 +204,22 @@ async function createApp({ sessionId, appName, callbackUrl }) {
   if (json?.result !== '1' && json?.result !== 1) {
     throw new Error(`ApplyApp 失败: ${JSON.stringify(json).slice(0, 300)}`);
   }
+}
+
+async function submitApp(sessionId, appId) {
+  // 提交发布（对私有应用等于"立即可用"）
+  const ts = Date.now();
+  const res = await httpRequest({
+    method: 'GET',
+    url: `https://open.mingdao.com/AppAjax/UpdateAppStatus?appID=${appId}&status=4&_=${ts}`,
+    headers: {
+      'Cookie': `md_pss_id=${sessionId}`,
+      'X-Requested-With': 'XMLHttpRequest',
+      'Accept': 'application/json, text/javascript, */*; q=0.01',
+      'Referer': `https://open.mingdao.com/App/${appId}`,
+    },
+  });
+  if (res.status !== 200) throw new Error(`UpdateAppStatus 失败 status=${res.status}: ${res.body.slice(0, 200)}`);
 }
 
 async function findAppByName(sessionId, appName) {
@@ -284,7 +304,7 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
   console.log('');
   console.log(c.bold(c.cyan('◆ oldoa-mcp — 一键完成全部配置')));
   console.log(c.dim('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
-  console.log('流程：登录 → 建应用 → 拉 APP_KEY/SECRET → 浏览器授权 → 存 access_token');
+  console.log('流程：登录 → 建应用 → 拉 APP_KEY/SECRET → 提交发布 → 浏览器授权 → 存 access_token');
   console.log(c.dim('明文密码只在内存里使用，不落盘不打日志。\n'));
 
   if (fs.existsSync(ENV_FILE) || fs.existsSync(SECRETS_FILE)) {
@@ -296,8 +316,13 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
   try {
     account = (await askVisible('明道账号（手机/邮箱）: ')).trim();
     password = await askHidden('明道密码（不回显）: ');
-    const suggested = `${DEFAULT_APP_NAME}-${Date.now().toString(36)}`;
-    appName = (await askVisible(`应用名称 [默认: ${suggested}]: `)).trim() || suggested;
+    // 2-10 字符限制：Claude-xxx 后缀保证多次运行名字不冲突
+    const suggested = `${DEFAULT_APP_NAME}-${Date.now().toString(36).slice(-3)}`;
+    appName = (await askVisible(`应用名称（2-10字符）[默认: ${suggested}]: `)).trim() || suggested;
+    if (appName.length < 2 || appName.length > 10) {
+      console.log(c.red(`应用名称必须 2-10 字符（当前 ${appName.length}）`));
+      process.exit(1);
+    }
     callbackUrl = (await askVisible(`OAuth 回调 URL [默认: ${DEFAULT_CALLBACK_URL}]: `)).trim() || DEFAULT_CALLBACK_URL;
   } catch (e) {
     console.log(c.red('\n已取消。'));
@@ -307,22 +332,26 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
 
   let sessionId, appId, appKey, appSecret;
   try {
-    process.stdout.write(c.dim('[1/6] 登录 mingdao.com ...'));
+    process.stdout.write(c.dim('[1/7] 登录 mingdao.com ...'));
     sessionId = await login(account, password);
-    process.stdout.write(`\r${c.green('[1/6] ✔')} 登录成功${' '.repeat(40)}\n`);
+    process.stdout.write(`\r${c.green('[1/7] ✔')} 登录成功${' '.repeat(40)}\n`);
 
-    process.stdout.write(c.dim('[2/6] 创建应用 ...'));
+    process.stdout.write(c.dim('[2/7] 创建应用（私有 + 全模块权限）...'));
     await createApp({ sessionId, appName, callbackUrl });
-    process.stdout.write(`\r${c.green('[2/6] ✔')} 应用已创建 ${c.dim(`"${appName}"`)}${' '.repeat(20)}\n`);
+    process.stdout.write(`\r${c.green('[2/7] ✔')} 应用已创建 ${c.dim(`"${appName}"`)}${' '.repeat(15)}\n`);
 
-    process.stdout.write(c.dim('[3/6] 查询应用 ID ...'));
+    process.stdout.write(c.dim('[3/7] 查询应用 ID ...'));
     appId = await findAppByName(sessionId, appName);
-    process.stdout.write(`\r${c.green('[3/6] ✔')} ${c.dim(`appId: ${appId}`)}${' '.repeat(20)}\n`);
+    process.stdout.write(`\r${c.green('[3/7] ✔')} ${c.dim(`appId: ${appId}`)}${' '.repeat(20)}\n`);
 
-    process.stdout.write(c.dim('[4/6] 提取 APP_KEY / APP_SECRET ...'));
+    process.stdout.write(c.dim('[4/7] 提取 APP_KEY / APP_SECRET ...'));
     ({ appKey, appSecret } = await fetchAppKeys(sessionId, appId));
     writeEnv({ appKey, appSecret, callbackUrl });
-    process.stdout.write(`\r${c.green('[4/6] ✔')} 凭据写入 ${c.dim(ENV_FILE)}${' '.repeat(5)}\n`);
+    process.stdout.write(`\r${c.green('[4/7] ✔')} 凭据写入 ${c.dim(ENV_FILE)}${' '.repeat(5)}\n`);
+
+    process.stdout.write(c.dim('[5/7] 提交发布（私有应用立即可用）...'));
+    await submitApp(sessionId, appId);
+    process.stdout.write(`\r${c.green('[5/7] ✔')} 已提交发布${' '.repeat(40)}\n`);
   } catch (e) {
     console.log('');
     console.log(c.red(`✘ ${e.message}`));
@@ -336,7 +365,7 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
   }).toString();
 
   console.log('');
-  console.log(c.dim('[5/6] 需要你浏览器授权拿 access_token'));
+  console.log(c.dim('[6/7] 需要你浏览器授权拿 access_token'));
   const opened = openBrowser(authUrl);
   if (opened) {
     console.log(c.dim('  已尝试自动打开浏览器。如未弹出，手动访问：'));
@@ -366,11 +395,11 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
   }
 
   try {
-    process.stdout.write(c.dim('[6/6] 换取 access_token ...'));
+    process.stdout.write(c.dim('[7/7] 换取 access_token ...'));
     const resp = await exchangeCode({ appKey, appSecret, redirectUri: callbackUrl, code });
     writeSecrets({ appKey, appSecret, redirectUri: callbackUrl, resp });
     const expMin = Math.round((parseInt(resp.expires_in || 0, 10) || 0) / 60);
-    process.stdout.write(`\r${c.green('[6/6] ✔')} access_token 已保存 ${c.dim(`(${expMin} 分钟有效，自动 refresh)`)}${' '.repeat(5)}\n`);
+    process.stdout.write(`\r${c.green('[7/7] ✔')} access_token 已保存 ${c.dim(`(${expMin} 分钟有效，自动 refresh)`)}${' '.repeat(5)}\n`);
   } catch (e) {
     console.log('');
     console.log(c.red(`✘ ${e.message}`));

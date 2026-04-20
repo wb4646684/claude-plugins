@@ -1,7 +1,7 @@
 {
   "name": "oldoa-mcp",
   "description": "明道协作 v1 API 精简 MCP：动态（post）+ 日程（calendar）",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": {
     "name": "Jeffrey"
   },
