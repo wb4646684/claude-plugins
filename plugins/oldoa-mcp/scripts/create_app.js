@@ -553,6 +553,57 @@ function writeSecrets({ appKey, appSecret, redirectUri, resp }) {
   console.log('');
   console.log(c.bold('直接启动 Claude Code，oldoa MCP 就能用了。'));
   console.log('');
+
+  // ── 自检：发动态 → 查详情 → 删动态 ────────────────────────────────
+  console.log(c.dim('── 自检 ──────────────────────────────────────────'));
+  const secrets = JSON.parse(fs.readFileSync(SECRETS_FILE, 'utf-8'));
+  const token = secrets.access_token;
+
+  async function apiPost(endpoint, params) {
+    const body = new URLSearchParams({ ...params, access_token: token, format: 'json' }).toString();
+    const res = await httpRequest({
+      method: 'POST',
+      url: `${MINGDAO_API}${endpoint}`,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+    return JSON.parse(res.body);
+  }
+
+  async function apiGet(endpoint, params) {
+    const qs = new URLSearchParams({ ...params, access_token: token, format: 'json' }).toString();
+    const res = await httpRequest({ method: 'GET', url: `${MINGDAO_API}${endpoint}?${qs}` });
+    return JSON.parse(res.body);
+  }
+
+  try {
+    process.stdout.write(c.dim('  [1/3] 发布测试动态 ...'));
+    const addResp = await apiPost('/v1/post/add_post', {
+      post_msg: '[oldoa-mcp 自检] 这条动态由安装脚本自动发出，随即会被删除。',
+      post_type: 0,
+    });
+    if (!addResp?.post_id) throw new Error(`add_post 失败: ${JSON.stringify(addResp)}`);
+    const postId = addResp.post_id;
+    process.stdout.write(`\r${c.green('  [1/3] ✔')} 动态已发布 ${c.dim(`post_id: ${postId}`)}\n`);
+
+    process.stdout.write(c.dim('  [2/3] 查询动态详情 ...'));
+    const detailResp = await apiGet('/v1/post/get_post_detail', { post_id: postId });
+    if (!detailResp?.post?.post_id) throw new Error(`get_post_detail 失败: ${JSON.stringify(detailResp)}`);
+    process.stdout.write(`\r${c.green('  [2/3] ✔')} 动态详情获取成功\n`);
+
+    process.stdout.write(c.dim('  [3/3] 删除测试动态 ...'));
+    const delResp = await apiPost('/v1/post/delete_post', { post_id: postId });
+    if (!delResp?.result && delResp?.error_code !== 1) throw new Error(`delete_post 失败: ${JSON.stringify(delResp)}`);
+    process.stdout.write(`\r${c.green('  [3/3] ✔')} 动态已删除\n`);
+
+    console.log('');
+    console.log(c.bold(c.green('✅ 自检通过，oldoa MCP 可以正常使用。')));
+  } catch (e) {
+    console.log('');
+    console.log(c.red(`✘ 自检失败：${e.message}`));
+    console.log(c.dim('  MCP 已配置，但 API 调用异常，请检查 token 或权限。'));
+  }
+  console.log('');
 })().catch(e => {
   console.error(c.red('\n脚本异常：'), e);
   process.exit(1);
