@@ -1,0 +1,13 @@
+{
+  "name": "plugin-builder",
+  "description": "交互式 Claude Code 插件脚手架：引导创建完整插件目录结构，支持 MCP server、skill、hook 等类型，适配任意 marketplace 仓库",
+  "version": "1.0.0",
+  "author": {
+    "name": "Jeffrey Zhang"
+  },
+  "homepage": "https://github.com/wb4646684/claude-plugins/tree/main/plugins/plugin-builder",
+  "repository": "https://github.com/wb4646684/claude-plugins",
+  "license": "MIT",
+  "keywords": ["plugin", "builder", "scaffold", "mcp", "skills"],
+  "category": "skills"
+}
