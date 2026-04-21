@@ -21,6 +21,7 @@
 | **cos-mcp** | 腾讯云 COS 文件中转，本地文件 → 公网 URL，用完即删 | [→ 安装说明](./plugins/cos-mcp/README.md) |
 | **oldoa-mcp** | 明道协作动态 + 日程（发动态/建日程/邀请成员） | [→ 安装说明](./plugins/oldoa-mcp/README.md) |
 | **context-optimize** | Claude 上下文审计，防止 memory/skills 越积越肿 | [→ 安装说明](./plugins/context-optimize/README.md) |
+| **plugin-builder** | 交互式插件脚手架，新建插件时自动生成完整目录结构 | [→ 安装说明](./plugins/plugin-builder/README.md) |
 
 ---
 
