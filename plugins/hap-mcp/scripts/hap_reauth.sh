@@ -125,16 +125,20 @@ try:
 except Exception:
     print('ERROR:响应不是合法 JSON：' + resp[:200])
     sys.exit(0)
-sid = (d.get('data') or {}).get('sessionId', '')
+data = d.get('data') or {}
+sid = data.get('sessionId', '')
 if sid:
-    print('OK:' + sid)
+    aid = data.get('accountId', '')
+    print('OK:' + sid + '|' + aid)
 else:
     msg = d.get('exception') or d.get('msg') or d.get('message') or resp[:300]
     print('ERROR:' + str(msg))
 " "$RESPONSE" 2>/dev/null)
 
 if [[ "$PARSE_RESULT" == OK:* ]]; then
-    SESSION_ID="${PARSE_RESULT#OK:}"
+    PAYLOAD_OK="${PARSE_RESULT#OK:}"
+    SESSION_ID="${PAYLOAD_OK%%|*}"
+    ACCOUNT_ID="${PAYLOAD_OK#*|}"
 else
     ERR_MSG="${PARSE_RESULT#ERROR:}"
     # 针对常见错误给出具体提示
@@ -153,6 +157,13 @@ fi
 echo -n "$SESSION_ID" > "$TOKEN_FILE"
 chmod 600 "$TOKEN_FILE" 2>/dev/null || true
 touch "$MARKER_FILE" 2>/dev/null || true
+
+# 6. 首次写入 accountId（只写一次，后续登录不覆盖）
+ACCOUNT_ID_FILE="$(dirname "$TOKEN_FILE")/account_id"
+if [ -n "$ACCOUNT_ID" ] && [ ! -f "$ACCOUNT_ID_FILE" ]; then
+    echo -n "$ACCOUNT_ID" > "$ACCOUNT_ID_FILE"
+    chmod 600 "$ACCOUNT_ID_FILE" 2>/dev/null || true
+fi
 
 echo -e "  ${GREEN}✔${RESET}  ${BOLD}Token 已更新${RESET}  ${GRAY}${SESSION_ID:0:12}...${RESET}"
 echo ""
