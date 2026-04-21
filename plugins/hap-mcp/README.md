@@ -86,7 +86,14 @@ MCP 进程（stdio）
 |------|------|
 | `~/.config/hap-mcp/credentials` | 加密后的账号密码（setup 写入，600 权限） |
 | `~/.config/hap-mcp/token` | 当前 sessionId（每次启动 Claude 自动刷新） |
+| `~/.config/hap-mcp/account_id` | 当前账号的 accountId（首次登录自动写入） |
 | `~/.config/hap-mcp/.last_refresh` | 上次刷新时间戳（避免频繁刷新） |
+
+`account_id` 可在 skill / 脚本中直接读取，用作 HAP 记录的默认负责人：
+
+```bash
+ACCOUNT_ID=$(cat ~/.config/hap-mcp/account_id)
+```
 
 ---
 
