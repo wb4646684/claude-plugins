@@ -7,17 +7,53 @@ that require a URL rather than a local path).
 """
 
 import os
+import sys
 import time
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from qcloud_cos import CosConfig, CosS3Client
 
-SECRET_ID = os.environ["COS_SECRET_ID"]
-SECRET_KEY = os.environ["COS_SECRET_KEY"]
-BUCKET = os.environ["COS_BUCKET"]
-REGION = os.environ.get("COS_REGION", "ap-shanghai")
-PREFIX = os.environ.get("COS_PREFIX", "tmp")
+
+def _load_creds(path: str) -> dict:
+    creds: dict = {}
+    try:
+        for line in Path(path).read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                k, v = line.split("=", 1)
+                creds[k.strip()] = v.strip().strip("'\"")
+    except Exception:
+        pass
+    return creds
+
+
+_cred_file = os.environ.get(
+    "COS_CREDENTIALS_FILE",
+    str(Path.home() / ".config/cos-mcp/credentials"),
+)
+_creds = _load_creds(_cred_file)
+
+
+def _get(key: str, default: str = "") -> str:
+    return os.environ.get(key) or _creds.get(key) or default
+
+
+SECRET_ID = _get("COS_SECRET_ID")
+SECRET_KEY = _get("COS_SECRET_KEY")
+BUCKET = _get("COS_BUCKET")
+REGION = _get("COS_REGION", "ap-shanghai")
+PREFIX = _get("COS_PREFIX", "tmp")
+
+if not SECRET_ID or not SECRET_KEY or not BUCKET:
+    print(
+        f"COS credentials not configured (checked {_cred_file}). "
+        "Run /cos-mcp:setup first.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 mcp = FastMCP("cos")
 

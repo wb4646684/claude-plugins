@@ -1,12 +1,22 @@
 {
   "name": "email-mcp",
   "description": "通用 SMTP/IMAP 邮件 MCP server：发邮件（支持附件）、列邮件、读邮件正文/附件、搜索、标记已读",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": {
     "name": "Jeffrey"
   },
   "homepage": "https://github.com/wb4646684/claude-plugins/tree/main/plugins/email-mcp",
   "repository": "https://github.com/wb4646684/claude-plugins",
   "license": "MIT",
-  "keywords": ["email", "smtp", "imap", "mcp", "qqmail", "163mail", "gmail"]
+  "keywords": ["email", "smtp", "imap", "mcp", "qqmail", "163mail", "gmail"],
+  "mcpServers": {
+    "email": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/index.js"],
+      "env": {
+        "EMAIL_CREDENTIALS_FILE": "${HOME}/.config/email-mcp/credentials"
+      }
+    }
+  }
 }

@@ -3,7 +3,7 @@
 #
 # 作用：
 #   调用 mingdao.com 登录接口，获取新的 sessionId，
-#   写入 ~/.claude.json 的 mcpServers.hap.url，
+#   写入 ~/.config/hap-mcp/token，
 #   避免 token 过期导致 HAP MCP 报 error_code: 10001。
 #
 # 凭据来源（按优先级）：
@@ -25,9 +25,8 @@ RESET='\033[0m'
 
 # ---------- 配置 ----------
 CRED_FILE="${HAP_MCP_CREDENTIALS:-$HOME/.config/hap-mcp/credentials}"
-CLAUDE_CONFIG="${CLAUDE_CONFIG:-$HOME/.claude.json}"
+TOKEN_FILE="${HAP_MCP_TOKEN:-$(dirname "$CRED_FILE")/token}"
 LOGIN_URL="https://www.mingdao.com/api/Login/MDAccountLogin"
-MCP_BASE_URL="https://api2.mingdao.com/mcp"
 
 # ---------- 工具函数 ----------
 header() {
@@ -68,7 +67,6 @@ if [ -f "$MARKER_FILE" ]; then
     mtime=$(stat -f %m "$MARKER_FILE" 2>/dev/null || stat -c %Y "$MARKER_FILE" 2>/dev/null || echo 0)
     age=$(( now - mtime ))
     if [ "$age" -lt "$FRESH_SECONDS" ]; then
-        # 静默退出（作为 SessionStart hook 运行时，避免每次会话都打一堆输出）
         if [ "${HAP_MCP_QUIET:-1}" = "1" ]; then
             exit 0
         fi
@@ -82,7 +80,6 @@ fi
 header "$ORANGE"
 
 # 2. 加载凭据
-# 优先使用插件 userConfig 注入的环境变量（安装后无需手动创建凭据文件）
 if [ -n "${CLAUDE_PLUGIN_OPTION_USERNAME:-}" ] && [ -n "${CLAUDE_PLUGIN_OPTION_PASSWORD:-}" ]; then
     HAP_LOGIN_ACCOUNT="$CLAUDE_PLUGIN_OPTION_USERNAME"
     HAP_LOGIN_PASSWORD="$CLAUDE_PLUGIN_OPTION_PASSWORD"
@@ -96,8 +93,7 @@ elif [ -f "$CRED_FILE" ]; then
     fi
     export HAP_LOGIN_ACCOUNT HAP_LOGIN_PASSWORD
 else
-    die "凭据未配置" "请通过插件配置填入 username 和 password，或运行 setup.js 生成凭据文件：
-      node \"$(dirname "$0")/setup.js\""
+    die "凭据未配置" "请运行 /hap-mcp:setup 完成初始化"
 fi
 
 # 3. 调用登录接口
@@ -135,37 +131,12 @@ except Exception:
 
 if [ -z "$SESSION_ID" ]; then
     die "鉴权失败" "响应：$RESPONSE
-  常见原因：凭据过期（明道前端加密参数已更新）→ 重新抓取 MDAccountLogin payload"
+  常见原因：凭据过期（明道前端加密参数已更新）→ 重新运行 /hap-mcp:setup"
 fi
 
-# 4. 写入 ~/.claude.json，若无 mcpServers.hap 则自动创建
-if [ ! -f "$CLAUDE_CONFIG" ]; then
-    die "Claude 配置文件不存在" "路径：$CLAUDE_CONFIG
-  请先启动一次 claude 生成该文件"
-fi
-
-python3 - <<PYEOF "$CLAUDE_CONFIG" "$SESSION_ID" "$MCP_BASE_URL"
-import json, sys, urllib.parse
-
-cfg_path, session_id, base_url = sys.argv[1:4]
-auth_param = urllib.parse.quote(f"md_pss_id {session_id}")
-new_url = f"{base_url}?Authorization={auth_param}"
-
-with open(cfg_path) as f:
-    cfg = json.load(f)
-
-cfg.setdefault("mcpServers", {})
-cfg["mcpServers"].setdefault("hap", {"type": "http"})
-cfg["mcpServers"]["hap"]["type"] = "http"
-cfg["mcpServers"]["hap"]["url"] = new_url
-
-with open(cfg_path, "w") as f:
-    json.dump(cfg, f, ensure_ascii=False, indent=2)
-PYEOF
-
-if [ $? -ne 0 ]; then
-    die "写入 Claude 配置失败" "$CLAUDE_CONFIG"
-fi
+# 4. 写入 token 文件
+echo -n "$SESSION_ID" > "$TOKEN_FILE"
+chmod 600 "$TOKEN_FILE" 2>/dev/null || true
 
 # 更新刷新时间戳
 touch "$MARKER_FILE" 2>/dev/null || true

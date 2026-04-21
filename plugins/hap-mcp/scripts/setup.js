@@ -161,11 +161,16 @@ function parseArgs(argv) {
     + `HAP_LOGIN_PASSWORD='${encPassword}'\n`;
   fs.writeFileSync(CRED_FILE, content, { mode: 0o600 });
 
+  // 写入初始 token 文件
+  const tokenFile = path.join(CRED_DIR, 'token');
+  fs.writeFileSync(tokenFile, resp.data.sessionId, { mode: 0o600 });
+
   console.log(c.green('✔ 鉴权成功'));
   console.log(c.dim(`  sessionId: ${resp.data.sessionId.slice(0, 16)}...`));
   console.log(c.dim(`  凭据已写入：${CRED_FILE}`));
+  console.log(c.dim(`  token 已写入：${tokenFile}`));
   console.log('');
   console.log(c.bold(c.green('✅ hap-mcp 配置完成')));
-  console.log(c.dim('重启 Claude Code 后 hap MCP 即可用，SessionStart hook 会自动刷新 sessionId。'));
+  console.log(c.dim('运行 /reload-plugins 后 hap MCP 即可用，SessionStart hook 会自动刷新 token。'));
   console.log('');
 })().catch(e => { console.error(c.red('\n脚本异常：'), e); process.exit(1); });

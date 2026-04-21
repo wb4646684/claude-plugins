@@ -1,107 +1,132 @@
 # hap-mcp
 
-明道云 HAP（超级应用平台）MCP 连接器 + session token 自动刷新。
+明道云 HAP（超级应用平台）MCP 连接器，附带 session token 自动刷新。
 
-装完后，Claude Code 能通过自然语言操作 HAP 应用里的任务、工作表、CRM、知识库等数据。
+装完后，在 Claude Code 里用自然语言就能操作 HAP 里的任意工作表——任务、审批、CRM、知识库等。
+
+---
 
 ## 前置要求
 
-- **明道云账号**，工作台已开通 HAP MCP 能力
-- **Node.js 18+**（跑 setup.js 用）
-- **Python 3.8+**（跑 reauth 脚本用）
-- `curl`（系统自带）
+- Claude Code（桌面版或 CLI）
+- Node.js 18+（跑 setup.js）
+- Python 3.8+（跑 reauth 脚本）
+- curl（系统自带）
+- 一个明道云账号，且该账号有权访问你要操作的 HAP 应用
 
-## 极简安装
+---
 
-```bash
-# 1. 装插件（在 Claude Code 里）
+## 安装步骤
+
+**第一步：安装插件**
+
+在 Claude Code 里依次执行：
+
+```
 /plugin marketplace add wb4646684/claude-plugins
-/plugin install hap-mcp@claude-plugins
-
-# 2. 跑一次 setup（在终端里，插件路径可能略有差异）
-node ~/.claude/plugins/cache/claude-plugins/plugins/hap-mcp/scripts/setup.js
-# 交互输入你的明道账号和密码 → 自动加密验证 → 写入 ~/.config/hap-mcp/credentials
-
-# 3. 重启 Claude Code 一次
+/plugin install hap-mcp@wb4646684-plugins
+/reload-plugins
 ```
 
-就这些。之后每次启动 Claude，插件的 `SessionStart` hook 会自动调用 reauth 脚本刷新 sessionId，你**不用配 shell alias**、不用记命令。
+**第二步：初始化凭据**
 
-验证：
+```
+/hap-mcp:setup
+```
+
+Claude 会在聊天里问你明道账号和密码，填入后自动完成验证和凭据写入。密码在本地加密，不会上传或落盘。
+
+**第三步：验证**
 
 ```
 /mcp
-# hap 条目为 connected 即成功
 ```
+
+看到 `hap: connected` 即成功。
+
+---
 
 ## 工作原理
 
 ```
 Claude Code 启动
-     └─ SessionStart hook
-          └─ hap_reauth.sh
-               ├─ 检查 token 是否 30 分钟内刷过（是则跳过）
-               ├─ 读 ~/.config/hap-mcp/credentials
-               ├─ POST mingdao.com/api/Login/MDAccountLogin
-               └─ 写 ~/.claude.json 的 mcpServers.hap.url
+  └─ SessionStart hook → hap_reauth.sh
+       ├─ 检查 token 是否 30 分钟内刷过（是则静默跳过）
+       ├─ 读 ~/.config/hap-mcp/credentials（加密凭据）
+       ├─ POST mingdao.com/api/Login/MDAccountLogin
+       └─ 写 ~/.config/hap-mcp/token（新 sessionId）
 
-MCP 加载后用最新 sessionId 连接 api2.mingdao.com/mcp
+MCP 进程（stdio）
+  └─ hap_start.sh → 读 token → mcp-remote https://api2.mingdao.com/mcp?Authorization=...
 ```
 
-## setup.js 做了什么
+**插件不修改 `~/.claude.json`**。MCP 注册由插件系统通过 `plugin.json` 完成。凭据和 token 均存放在 `~/.config/hap-mcp/`，与其他工具配置隔离。
 
-1. 交互式收集明文账号 + 密码（密码输入不回显）
-2. 用**明道前端同款的 RSA-1024 公钥**（从 login bundle 提取）在本地加密
-3. POST 到 `MDAccountLogin` API 验证加密结果能换出 sessionId
-4. 成功则把加密后的 payload 写入 `~/.config/hap-mcp/credentials`，权限 `600`
-5. 明文密码**只在内存里用过**，绝不落盘、不打日志
+---
 
-之后只有以下情况才需要重跑 setup：
+## setup 做了什么
+
+1. 在聊天里收集明道账号 + 密码（不经过任何网络）
+2. 用**明道前端同款 RSA-1024 公钥**在本地加密账号密码
+3. 向 `MDAccountLogin` API 验证，确认能换出 sessionId
+4. 加密后的凭据写入 `~/.config/hap-mcp/credentials`（权限 600）
+5. 初始 sessionId 写入 `~/.config/hap-mcp/token`
+6. 明文密码只在内存中使用，绝不落盘
+
+以下情况才需要重跑 `/hap-mcp:setup`：
 - 改了明道密码
-- 明道前端更新了 RSA 公钥（极少发生）
+- 凭据文件被删除
+- 明道前端更新了 RSA 公钥（极少）
 
-## 环境变量
+---
 
-| 变量 | 默认值 | 作用 |
+## 配置文件说明
+
+| 文件 | 内容 |
+|------|------|
+| `~/.config/hap-mcp/credentials` | 加密后的账号密码（setup 写入，600 权限） |
+| `~/.config/hap-mcp/token` | 当前 sessionId（每次启动 Claude 自动刷新） |
+| `~/.config/hap-mcp/.last_refresh` | 上次刷新时间戳（避免频繁刷新） |
+
+---
+
+## 环境变量（可选调整）
+
+| 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `HAP_MCP_CREDENTIALS` | `$HOME/.config/hap-mcp/credentials` | 凭据文件路径 |
-| `CLAUDE_CONFIG` | `$HOME/.claude.json` | Claude MCP 配置文件 |
-| `HAP_MCP_FRESH_SECS` | `1800`（30 分钟）| token 新鲜阈值 —— 距上次刷新不到这个秒数时跳过刷新 |
-| `HAP_MCP_QUIET` | `1` | 静默模式（SessionStart hook 里用），设 `0` 可看详细日志 |
+| `HAP_MCP_CREDENTIALS` | `~/.config/hap-mcp/credentials` | 凭据文件路径 |
+| `HAP_MCP_TOKEN` | `~/.config/hap-mcp/token` | token 文件路径 |
+| `HAP_MCP_FRESH_SECS` | `1800`（30 分钟）| token 刷新冷却时间 |
+| `HAP_MCP_QUIET` | `1` | 静默模式（设 `0` 可看刷新日志） |
+
+---
 
 ## 故障排查
 
-| 症状 | 排查 |
-|------|------|
-| `/mcp` 显示 `hap: authentication failed (10001)` | 手动跑 reauth 看输出；或 setup 重新生成凭据 |
-| setup.js 报"鉴权失败" | 账号或密码错；或明道前端 RSA 公钥换了（极少） |
-| 每次会话启动都卡 1-2 秒 | Hook 正在网络请求；可把 `HAP_MCP_FRESH_SECS` 调大 |
-| 不想用 hook 想手动控制 | 在 `/plugin` 菜单里禁用这个插件的 hook |
+| 症状 | 解决方法 |
+|------|---------|
+| `/mcp` 显示 `hap: error (10001)` | token 过期。手动触发：`HAP_MCP_QUIET=0 <plugin-path>/scripts/hap_reauth.sh` |
+| `hap: error (430024)` 用户不在应用内 | 账号没有该 HAP 应用权限，确认用了正确的工作账号 |
+| setup 报"鉴权失败" | 账号密码错误；或触发了验证码（先去网页手动登录一次再重试） |
+| token 不自动刷新 | `/plugin` 确认 hap-mcp 处于启用状态；hook 未被禁用 |
 
-手动跑 reauth（排查用）：
+手动触发刷新（调试用）：
 
 ```bash
-HAP_MCP_QUIET=0 ~/.claude/plugins/cache/claude-plugins/plugins/hap-mcp/scripts/hap_reauth.sh
+HAP_MCP_QUIET=0 \
+  $(find ~/.claude/plugins/cache/wb4646684-plugins/hap-mcp -name hap_reauth.sh | head -1)
 ```
 
-## 安全提示
+---
 
-- `~/.config/hap-mcp/credentials` 里存的是**加密后的 payload**，不是明文——但任何能拿到它的人都能以你身份登录
-- 文件权限默认 600（只有自己可读），别手贱 chmod 666
+## 安全说明
+
+- `credentials` 文件存的是 RSA 加密后的 payload，不是明文，但泄漏后仍可被用于登录
+- 文件权限默认 600，不要改宽
 - 不要把 credentials 提交到 git
-- 怀疑泄漏：去明道 Web 端退出所有会话 → 改密码 → 重跑 setup
+- 怀疑泄漏：去明道 Web 端退出所有会话 → 改密码 → 重跑 `/hap-mcp:setup`
 
-## 手动安装（不用 setup.js）
-
-老方法依然支持：用浏览器 F12 自己抓 `MDAccountLogin` 请求的 Payload，把 `account` 和 `password` 两个加密字段粘到 credentials 文件里：
-
-```bash
-mkdir -p ~/.config/hap-mcp
-cp ~/.claude/plugins/cache/claude-plugins/plugins/hap-mcp/scripts/credentials.example \
-   ~/.config/hap-mcp/credentials
-chmod 600 ~/.config/hap-mcp/credentials
-vim ~/.config/hap-mcp/credentials
-```
+---
 
 ## License
 

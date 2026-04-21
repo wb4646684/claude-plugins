@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const readline = require('readline');
 
-const CLAUDE_JSON = path.join(os.homedir(), '.claude.json');
+const CRED_DIR  = path.join(os.homedir(), '.config', 'email-mcp');
 
 const c = {
   bold:  s => `\x1b[1m${s}\x1b[0m`,
@@ -45,9 +45,9 @@ function askHidden(prompt) {
     process.stdin.setEncoding('utf8');
     let val = '';
     const onData = ch => {
-      if (ch === '\u0003') { process.stdout.write('\n'); process.stdin.setRawMode(false); process.stdin.pause(); process.stdin.removeListener('data', onData); reject(new Error('Cancelled')); }
-      else if (ch === '\r' || ch === '\n' || ch === '\u0004') { process.stdout.write('\n'); process.stdin.setRawMode(false); process.stdin.pause(); process.stdin.removeListener('data', onData); resolve(val); }
-      else if (ch === '\u007f' || ch === '\b') { if (val.length) val = val.slice(0, -1); }
+      if (ch === '') { process.stdout.write('\n'); process.stdin.setRawMode(false); process.stdin.pause(); process.stdin.removeListener('data', onData); reject(new Error('Cancelled')); }
+      else if (ch === '\r' || ch === '\n' || ch === '') { process.stdout.write('\n'); process.stdin.setRawMode(false); process.stdin.pause(); process.stdin.removeListener('data', onData); resolve(val); }
+      else if (ch === '' || ch === '\b') { if (val.length) val = val.slice(0, -1); }
       else { val += ch; }
     };
     process.stdin.on('data', onData);
@@ -58,11 +58,10 @@ function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--mcp-name'     && argv[i+1]) { args.mcpName     = argv[++i]; }
-    else if (a === '--display-name' && argv[i+1]) { args.displayName = argv[++i]; }
-    else if (a === '--user'         && argv[i+1]) { args.user        = argv[++i]; }
+    if (a === '--user'         && argv[i+1]) { args.user        = argv[++i]; }
     else if (a === '--pass'         && argv[i+1]) { args.pass        = argv[++i]; }
     else if (a === '--preset'       && argv[i+1]) { args.preset      = argv[++i]; }
+    else if (a === '--display-name' && argv[i+1]) { args.displayName = argv[++i]; }
     else if (a === '--smtp-host'    && argv[i+1]) { args.smtpHost    = argv[++i]; }
     else if (a === '--smtp-port'    && argv[i+1]) { args.smtpPort    = argv[++i]; }
     else if (a === '--imap-host'    && argv[i+1]) { args.imapHost    = argv[++i]; }
@@ -79,82 +78,66 @@ function parseArgs(argv) {
   console.log(c.bold(c.cyan('◆ email-mcp — 配置向导')));
   console.log(c.dim('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
 
-  const accounts = [];
+  let acct;
 
   if (nonInteractive) {
-    // 单账号非交互模式
     const preset = PRESETS[cli.preset] || PRESETS['1'];
-    const mcpName     = cli.mcpName     || 'email';
-    const displayName = cli.displayName || cli.user;
-    const smtpHost    = cli.smtpHost    || preset.smtp_host;
-    const smtpPort    = cli.smtpPort    || preset.smtp_port;
-    const imapHost    = cli.imapHost    || preset.imap_host;
-    const imapPort    = cli.imapPort    || preset.imap_port;
-    console.log(c.dim(`非交互模式：${mcpName} (${cli.user})，preset=${cli.preset || '1'} (${preset.name})`));
-    accounts.push({ mcpName, name: displayName, user: cli.user, pass: cli.pass, smtpHost, smtpPort, imapHost, imapPort });
+    console.log(c.dim(`非交互模式：${cli.user}，preset=${cli.preset || '1'} (${preset.name})`));
+    acct = {
+      name:     cli.displayName || cli.user,
+      user:     cli.user,
+      pass:     cli.pass,
+      smtpHost: cli.smtpHost || preset.smtp_host,
+      smtpPort: cli.smtpPort || preset.smtp_port,
+      imapHost: cli.imapHost || preset.imap_host,
+      imapPort: cli.imapPort || preset.imap_port,
+    };
   } else {
-    console.log('支持同时配置多个邮箱（如 qqmail + workmail）\n');
-    let addMore = true;
-    while (addMore) {
-      console.log(c.yellow(`\n── 邮箱 #${accounts.length + 1} ──────────────────────────────`));
-      console.log('邮箱类型：');
-      for (const [k, v] of Object.entries(PRESETS)) console.log(`  [${k}] ${v.name}`);
-      const choice = (await ask('选择', '1'));
-      const preset = PRESETS[choice] || PRESETS['1'];
-      if (preset.hint) console.log(c.dim(`  提示：${preset.hint}\n`));
+    console.log('邮箱类型：');
+    for (const [k, v] of Object.entries(PRESETS)) console.log(`  [${k}] ${v.name}`);
+    const choice = await ask('选择', '1');
+    const preset = PRESETS[choice] || PRESETS['1'];
+    if (preset.hint) console.log(c.dim(`  提示：${preset.hint}\n`));
 
-      let smtpHost, smtpPort, imapHost, imapPort, user, pass, name, mcpName;
-      try {
-        mcpName  = await ask('MCP 实例名称（如 qqmail / workmail）', accounts.length === 0 ? 'email' : `email${accounts.length + 1}`);
-        name     = await ask('发件人昵称');
-        user     = await ask('邮箱地址');
-        pass     = await askHidden('授权码 / 应用专用密码（不回显）');
-        smtpHost = await ask('SMTP 服务器', preset.smtp_host);
-        smtpPort = await ask('SMTP 端口', preset.smtp_port);
-        imapHost = await ask('IMAP 服务器', preset.imap_host);
-        imapPort = await ask('IMAP 端口', preset.imap_port);
-      } catch (e) {
-        console.log(c.red('\n已取消。'));
-        process.exit(1);
-      }
-      if (!user || !pass) { console.log(c.red('邮箱地址和授权码不能为空。')); process.exit(1); }
-      accounts.push({ mcpName, name, user, pass, smtpHost, smtpPort, imapHost, imapPort });
-
-      const more = (await ask('\n继续添加下一个邮箱？', 'n')).toLowerCase();
-      addMore = more === 'y' || more === 'yes';
+    try {
+      const name     = await ask('发件人昵称');
+      const user     = await ask('邮箱地址');
+      const pass     = await askHidden('授权码 / 应用专用密码（不回显）');
+      const smtpHost = await ask('SMTP 服务器', preset.smtp_host);
+      const smtpPort = await ask('SMTP 端口', preset.smtp_port);
+      const imapHost = await ask('IMAP 服务器', preset.imap_host);
+      const imapPort = await ask('IMAP 端口', preset.imap_port);
+      acct = { name, user, pass, smtpHost, smtpPort, imapHost, imapPort };
+    } catch (e) {
+      console.log(c.red('\n已取消。'));
+      process.exit(1);
     }
   }
 
-  // 写入 ~/.claude.json
-  process.stdout.write(c.dim('\n写入 ~/.claude.json ...'));
-  const serverJsPath = process.env.CLAUDE_PLUGIN_ROOT
-    ? path.join(process.env.CLAUDE_PLUGIN_ROOT, 'server/index.js')
-    : path.join(__dirname, '../server/index.js');
-
-  let cfg = {};
-  try { cfg = JSON.parse(fs.readFileSync(CLAUDE_JSON, 'utf-8')); } catch (e) {}
-  cfg.mcpServers = cfg.mcpServers || {};
-
-  for (const a of accounts) {
-    cfg.mcpServers[a.mcpName] = {
-      type: 'stdio',
-      command: 'node',
-      args: [serverJsPath],
-      env: {
-        SMTP_HOST: a.smtpHost, SMTP_PORT: a.smtpPort, SMTP_SSL: 'true',
-        SMTP_USER: a.user,     SMTP_PASS: a.pass,
-        DISPLAY_NAME: a.name,
-        IMAP_HOST: a.imapHost, IMAP_PORT: a.imapPort, IMAP_SSL: 'true',
-        IMAP_USER: a.user,     IMAP_PASS: a.pass,
-      },
-    };
+  if (!acct.user || !acct.pass) {
+    console.log(c.red('邮箱地址和授权码不能为空。'));
+    process.exit(1);
   }
-  fs.writeFileSync(CLAUDE_JSON, JSON.stringify(cfg, null, 2));
-  console.log(c.green(' ✔'));
+
+  fs.mkdirSync(CRED_DIR, { recursive: true });
+  const credFile = path.join(CRED_DIR, 'credentials');
+  const content = `# email-mcp credentials — generated by setup.js on ${new Date().toISOString()}\n`
+    + `SMTP_HOST=${acct.smtpHost}\n`
+    + `SMTP_PORT=${acct.smtpPort}\n`
+    + `SMTP_SSL=true\n`
+    + `SMTP_USER=${acct.user}\n`
+    + `SMTP_PASS=${acct.pass}\n`
+    + `DISPLAY_NAME=${acct.name}\n`
+    + `IMAP_HOST=${acct.imapHost}\n`
+    + `IMAP_PORT=${acct.imapPort}\n`
+    + `IMAP_SSL=true\n`
+    + `IMAP_USER=${acct.user}\n`
+    + `IMAP_PASS=${acct.pass}\n`;
+  fs.writeFileSync(credFile, content, { mode: 0o600 });
 
   console.log('');
   console.log(c.bold(c.green('✅ email-mcp 配置完成')));
-  console.log(`已配置 ${accounts.length} 个邮箱：${accounts.map(a => c.cyan(a.mcpName)).join(', ')}`);
-  console.log(c.dim('重启 Claude Code 后 /mcp 应显示对应邮箱条目 connected'));
+  console.log(c.dim(`凭据已写入：${credFile}`));
+  console.log(c.dim('运行 /reload-plugins 后 email MCP 即可用'));
   console.log('');
 })().catch(e => { console.error(c.red('\n脚本异常：'), e); process.exit(1); });

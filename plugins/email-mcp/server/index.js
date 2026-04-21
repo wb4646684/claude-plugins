@@ -11,18 +11,39 @@ const fs = require('fs');
 const path = require('path');
 
 // ── Config ──────────────────────────────────────────────────────────────────
-const SMTP_HOST = process.env.SMTP_HOST;
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || '465');
-const SMTP_SSL  = process.env.SMTP_SSL !== 'false';
-const SMTP_USER = process.env.SMTP_USER;
-const SMTP_PASS = process.env.SMTP_PASS;
-const DISPLAY_NAME = process.env.DISPLAY_NAME || SMTP_USER;
+function loadCreds(filePath) {
+  const creds = {};
+  try {
+    const lines = require('fs').readFileSync(filePath, 'utf-8').split('\n');
+    for (const line of lines) {
+      const l = line.trim();
+      if (!l || l.startsWith('#')) continue;
+      const idx = l.indexOf('=');
+      if (idx < 0) continue;
+      const k = l.slice(0, idx).trim();
+      const v = l.slice(idx + 1).trim().replace(/^['"]|['"]$/g, '');
+      creds[k] = v;
+    }
+  } catch (e) {}
+  return creds;
+}
 
-const IMAP_HOST = process.env.IMAP_HOST;
-const IMAP_PORT = parseInt(process.env.IMAP_PORT || '993');
-const IMAP_SSL  = process.env.IMAP_SSL !== 'false';
-const IMAP_USER = process.env.IMAP_USER;
-const IMAP_PASS = process.env.IMAP_PASS;
+const _credFile = process.env.EMAIL_CREDENTIALS_FILE;
+const _creds = _credFile ? loadCreds(_credFile) : {};
+const _get = (key, def = '') => process.env[key] || _creds[key] || def;
+
+const SMTP_HOST = _get('SMTP_HOST');
+const SMTP_PORT = parseInt(_get('SMTP_PORT', '465'));
+const SMTP_SSL  = _get('SMTP_SSL', 'true') !== 'false';
+const SMTP_USER = _get('SMTP_USER');
+const SMTP_PASS = _get('SMTP_PASS');
+const DISPLAY_NAME = _get('DISPLAY_NAME') || SMTP_USER;
+
+const IMAP_HOST = _get('IMAP_HOST');
+const IMAP_PORT = parseInt(_get('IMAP_PORT', '993'));
+const IMAP_SSL  = _get('IMAP_SSL', 'true') !== 'false';
+const IMAP_USER = _get('IMAP_USER');
+const IMAP_PASS = _get('IMAP_PASS');
 
 function makeTransport() {
   return nodemailer.createTransport({
