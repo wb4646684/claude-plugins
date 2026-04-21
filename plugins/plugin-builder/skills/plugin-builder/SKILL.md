@@ -152,11 +152,17 @@ log "OK    session hook 执行完成"
 
 ## Marketplace 安装命令规范
 
-README 里的安装命令，非 GitHub 仓库必须用完整 `.git` HTTPS URL：
-```
-/plugin marketplace add https://your-gitlab.example.com/group/repo.git
-```
-不能用裸仓库 URL（返回 HTML 导致 schema 解析失败），也不能用 raw JSON URL（不会触发 git clone）。
+`/plugin marketplace add` 的格式按仓库类型区分：
+
+- **GitHub**：直接用短格式 `owner/repo`
+  ```
+  /plugin marketplace add wb4646684/claude-plugins
+  ```
+- **自建 GitLab / 其他 Git 服务**：必须用完整 `.git` HTTPS URL
+  ```
+  /plugin marketplace add https://your-gitlab.example.com/group/repo.git
+  ```
+  不能用裸仓库 URL（返回 HTML 导致 schema 解析失败），也不能用 raw JSON URL（不会触发 git clone）。
 
 插件安装命令必须带 `@marketplace-name` 后缀：
 ```
