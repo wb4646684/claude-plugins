@@ -8,7 +8,9 @@ if (nodeMajor < 18) {
   process.exit(1);
 }
 
+const { execSync } = require('child_process');
 const fs = require('fs');
+const https = require('https');
 const os = require('os');
 const path = require('path');
 const readline = require('readline');
@@ -61,6 +63,56 @@ function askHidden(prompt) {
     process.stdin.on('data', onData);
   });
 }
+
+const PLUGIN_NAME = 'email-mcp';
+const PLUGIN_VERSION = '1.0.4';
+const PLUGIN_KEY = '9683cffe-3c1a-4c57-9c5f-1829ca258f6b';
+
+// ---- 错误上报（公开表单，经用户确认后提交）----
+async function reportError(step, errorMsg) {
+  if (!process.stdin.isTTY) return;
+  const sanitize = s => String(s)
+    .replace(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, '***@***.***')
+    .replace(/1[3-9]\d{9}/g, '1**********')
+    .replace(/[0-9a-f]{32,}/gi, '[REDACTED]')
+    .replace(new RegExp(os.homedir().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '~');
+  const cleanMsg = sanitize(errorMsg);
+  let osVer = 'unknown', aiVer = 'unknown';
+  try { osVer = process.platform === 'darwin' ? execSync('sw_vers -productVersion', { timeout: 2000 }).toString().trim() : `${os.type()} ${os.release()}`; } catch {}
+  try { aiVer = execSync('claude --version', { timeout: 2000 }).toString().trim().split('\n')[0]; } catch {}
+  const osLabel = { darwin: 'macOS', linux: 'Linux', win32: 'Windows' }[process.platform] || process.platform;
+  const DIM = s => `\x1b[2m${s}\x1b[0m`, YELLOW = s => `\x1b[33m${s}\x1b[0m`;
+  console.log('');
+  console.log(YELLOW('  是否提交错误报告帮助改进插件？（不包含账号密码）'));
+  console.log(DIM(`  将上报：插件名=${PLUGIN_NAME}  版本=${PLUGIN_VERSION}  系统=${osLabel} ${osVer}  AI=${aiVer}`));
+  console.log(DIM(`  报错内容：${cleanMsg}`));
+  process.stdout.write('  [y/N] > ');
+  const answer = await new Promise(resolve => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question('', a => { rl.close(); resolve(a.trim()); });
+  });
+  if (answer.toLowerCase() !== 'y') { console.log(DIM('  已跳过')); return; }
+  const body = JSON.stringify({ worksheetId: '69e7045f9513a27f83d3ccbd', receiveControls: [
+    { controlId: '69e7045ff93dd47d496c0ece', type: 2, value: `${PLUGIN_NAME} 安装报错：${step}`, controlName: '标题', dot: 0 },
+    { controlId: '69e7045ff93dd47d496c0ecf', type: 9, value: JSON.stringify([PLUGIN_KEY]), controlName: '插件名', dot: 0 },
+    { controlId: '69e7045ff93dd47d496c0ed0', type: 2, value: PLUGIN_VERSION, controlName: '版本号', dot: 0 },
+    { controlId: '69e7045ff93dd47d496c0ed1', type: 2, value: step, controlName: '步骤', dot: 0 },
+    { controlId: '69e7045ff93dd47d496c0ed2', type: 2, value: cleanMsg, controlName: '报错内容', dot: 0 },
+    { controlId: '69e7045ff93dd47d496c0ed3', type: 9, value: JSON.stringify([process.platform === 'darwin' ? '2970e8ef-1a7c-4060-b97b-12221ed8919c' : '3ed18664-4e5d-4ff7-9356-3f323d147d21']), controlName: '操作系统', dot: 0 },
+    { controlId: '69e7045ff93dd47d496c0ed4', type: 9, value: JSON.stringify(['2c33893a-bbe3-4c18-b678-a847e7e8a43a']), controlName: '类型', dot: 0 },
+    { controlId: '69e7063a9513a27f83d3cd09', type: 2, value: aiVer, controlName: 'AI版本', dot: 0 },
+    { controlId: '69e7063a9513a27f83d3cd0a', type: 2, value: osVer, controlName: '系统版本', dot: 0 },
+  ]});
+  await new Promise(resolve => {
+    const req = https.request({ hostname: 'www.mingdao.com', path: '/api/PublicWorksheet/AddRow', method: 'POST', timeout: 5000,
+      headers: { 'content-type': 'application/json', 'authorization': '', 'clientid': '05a01d0920df02d09d0d10970140db06c0660bb07d0a20a0', 'origin': 'https://d557778d685be9b5.share.mingdao.net', 'x-requested-with': 'XMLHttpRequest' }
+    }, () => resolve());
+    req.on('error', () => resolve()); req.on('timeout', () => { req.destroy(); resolve(); });
+    req.write(body); req.end();
+  });
+  console.log(DIM('  ✔ 已提交，感谢反馈'));
+}
+// ---- end reportError ----
 
 function parseArgs(argv) {
   const args = {};
@@ -199,4 +251,4 @@ function saveAccounts(accounts) {
 
   console.log(c.dim('运行 /reload-plugins 后生效'));
   console.log('');
-})().catch(e => { console.error(c.red('\n脚本异常：'), e); process.exit(1); });
+})().catch(async e => { console.error(c.red('\n脚本异常：'), e); await reportError('未知异常', e.message || String(e)); process.exit(1); });
