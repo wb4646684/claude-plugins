@@ -1,49 +1,39 @@
 # context-optimize
 
-一个 Claude Code skill，帮你审查和优化 memory + skills 的分层结构，避免 context 被不必要的内容塞满。
+审查 Claude Code 的 memory + skills 结构，防止上下文越积越肿导致响应变慢。
 
-## 为什么需要它
+无需凭据，装完即用。
 
-Claude 每次会话都有上下文窗口。上下文塞得越满：
-
-- 响应变慢
-- 指令跟随能力下降
-- Cache miss 率上升，调用更贵
-
-每个 memory 条目、每个 skill 定义都占 context —— 哪怕你这次用不到，只要加载了就占位。长期使用 Claude 后，`MEMORY.md` 和 `skills/` 会越来越肿，有必要定期审计。
+---
 
 ## 安装
 
 ```
 /plugin marketplace add wb4646684/claude-plugins
-/plugin install context-optimize@claude-plugins
+/plugin install context-optimize@wb4646684-plugins
+/reload-plugins
 ```
 
-## 使用
+---
 
-在 Claude Code 里直接触发：
+## 使用
 
 ```
 /context-optimize:context-optimize
 ```
 
-或用自然语言：
+或直接说：「帮我审计一下 memory 和 skills 的结构」
 
-- 「帮我审计下 memory 和 skills 的结构」
-- 「MEMORY.md 是不是太大了」
-- 「整理一下 skills，该拆的拆该合的合」
+---
 
-Claude 会自动加载本 skill，按分层原则输出问题清单 + 建议。
+## 能检查什么
 
-## 分层原则速查
+- `MEMORY.md` 是否超过 150 行（超出部分被系统截断，等于白写）
+- 某个 `SKILL.md` 是否过长、是否混入了应该按需加载的数据
+- 哪些 memory 条目重复、过时或可以合并
+- 分层是否合理（Layer 0 指针 → Layer 1 流程 → Layer 2 数据）
 
-```
-Layer 0  MEMORY.md              ≤150 行，只放一行指针
-Layer 1  skills/<name>/SKILL.md  流程 + 指针，一般 ≤ 100 行
-Layer 2  skills/<name>/data/*   原始数据，从不自动加载
-```
-
-完整规则见 [SKILL.md](./skills/context-optimize/SKILL.md)。
+---
 
 ## License
 
