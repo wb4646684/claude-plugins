@@ -1,15 +1,5 @@
 #!/bin/bash
 # HAP MCP — session token 自动刷新脚本
-#
-# 作用：
-#   调用 mingdao.com 登录接口，获取新的 sessionId，
-#   写入 ~/.config/hap-mcp/token，
-#   避免 token 过期导致 HAP MCP 报 error_code: 10001。
-#
-# 凭据来源（按优先级）：
-#   1. 插件 userConfig 注入的环境变量 CLAUDE_PLUGIN_OPTION_USERNAME / CLAUDE_PLUGIN_OPTION_PASSWORD
-#   2. $HAP_MCP_CREDENTIALS 指向的凭据文件（默认 ~/.config/hap-mcp/credentials）
-
 set -uo pipefail
 
 # ---------- 配色 ----------
@@ -30,16 +20,15 @@ LOGIN_URL="https://www.mingdao.com/api/Login/MDAccountLogin"
 
 # ---------- 工具函数 ----------
 header() {
-    local color="$1"
     echo ""
-    echo -e "  ${color}${BOLD}◆ HAP${RESET}  ${BOLD}Token Refresh${RESET}  ${DARK}·  $(date '+%H:%M:%S')${RESET}"
+    echo -e "  ${1}${BOLD}◆ HAP${RESET}  ${BOLD}Token Refresh${RESET}  ${DARK}·  $(date '+%H:%M:%S')${RESET}"
     echo -e "  ${DARK}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
     echo ""
 }
 
 die() {
     echo -e "  ${RED}✘${RESET}  ${BOLD}$1${RESET}" >&2
-    [ $# -ge 2 ] && echo -e "  ${DARK}$2${RESET}" >&2
+    [ $# -ge 2 ] && echo -e "  ${DARK}→ $2${RESET}" >&2
     echo ""
     exit 1
 }
@@ -56,12 +45,19 @@ spinner() {
     printf "\r\033[K"
 }
 
+# ---------- 依赖检查 ----------
+for _cmd in curl python3; do
+    if ! command -v "$_cmd" &>/dev/null; then
+        die "缺少依赖：$_cmd" "请先安装 $_cmd 后重试"
+    fi
+done
+
 # ---------- 主流程 ----------
 
 MARKER_FILE="${HAP_MCP_MARKER:-$(dirname "$CRED_FILE")/.last_refresh}"
-FRESH_SECONDS="${HAP_MCP_FRESH_SECS:-1800}"  # 默认 30 分钟内不重复刷新
+FRESH_SECONDS="${HAP_MCP_FRESH_SECS:-1800}"
 
-# 1. 如果 token 还新鲜（上次刷新 < FRESH_SECONDS），直接跳过
+# 1. token 还新鲜则跳过
 if [ -f "$MARKER_FILE" ]; then
     now=$(date +%s)
     mtime=$(stat -f %m "$MARKER_FILE" 2>/dev/null || stat -c %Y "$MARKER_FILE" 2>/dev/null || echo 0)
@@ -89,7 +85,7 @@ elif [ -f "$CRED_FILE" ]; then
     : "${HAP_LOGIN_ACCOUNT:?凭据文件缺字段 HAP_LOGIN_ACCOUNT}"
     : "${HAP_LOGIN_PASSWORD:?凭据文件缺字段 HAP_LOGIN_PASSWORD}"
     if [ -z "$HAP_LOGIN_ACCOUNT" ] || [ -z "$HAP_LOGIN_PASSWORD" ]; then
-        die "凭据为空" "请在 $CRED_FILE 里填入 HAP_LOGIN_ACCOUNT 和 HAP_LOGIN_PASSWORD"
+        die "凭据为空" "请重新运行 /hap-mcp:setup"
     fi
     export HAP_LOGIN_ACCOUNT HAP_LOGIN_PASSWORD
 else
@@ -110,35 +106,52 @@ print(json.dumps({
 }))
 ")
 
-curl -s -X POST "$LOGIN_URL" \
+curl -s --max-time 15 -X POST "$LOGIN_URL" \
     -H "Content-Type: application/json" \
     -d "$PAYLOAD" \
     > "$TMP_RESP" &
 CURL_PID=$!
 spinner "$CURL_PID"
-wait "$CURL_PID" || die "登录请求失败（网络不通？）"
+wait "$CURL_PID" || die "登录请求失败" "检查网络连接，或确认 mingdao.com 可访问"
 
 RESPONSE=$(cat "$TMP_RESP")
 
-SESSION_ID=$(python3 -c "
+# 4. 解析响应，提取 sessionId 或友好错误消息
+PARSE_RESULT=$(python3 -c "
 import json, sys
+resp = sys.argv[1]
 try:
-    d = json.loads(sys.argv[1])
-    print(d.get('data', {}).get('sessionId', ''))
+    d = json.loads(resp)
 except Exception:
-    pass
+    print('ERROR:响应不是合法 JSON：' + resp[:200])
+    sys.exit(0)
+sid = (d.get('data') or {}).get('sessionId', '')
+if sid:
+    print('OK:' + sid)
+else:
+    msg = d.get('exception') or d.get('msg') or d.get('message') or resp[:300]
+    print('ERROR:' + str(msg))
 " "$RESPONSE" 2>/dev/null)
 
-if [ -z "$SESSION_ID" ]; then
-    die "鉴权失败" "响应：$RESPONSE
-  常见原因：凭据过期（明道前端加密参数已更新）→ 重新运行 /hap-mcp:setup"
+if [[ "$PARSE_RESULT" == OK:* ]]; then
+    SESSION_ID="${PARSE_RESULT#OK:}"
+else
+    ERR_MSG="${PARSE_RESULT#ERROR:}"
+    # 针对常见错误给出具体提示
+    if echo "$ERR_MSG" | grep -q "时间"; then
+        die "鉴权失败：$ERR_MSG" "系统时间与服务器不一致，请校准后重试：sudo sntp -sS time.apple.com"
+    elif echo "$ERR_MSG" | grep -q "验证码\|captcha\|图形"; then
+        die "鉴权失败：$ERR_MSG" "触发了图形验证码，请先在浏览器登录一次明道云再重试"
+    elif echo "$ERR_MSG" | grep -q "密码\|账号\|不存在"; then
+        die "鉴权失败：$ERR_MSG" "账号或密码错误，请重新运行 /hap-mcp:setup"
+    else
+        die "鉴权失败：$ERR_MSG" "如持续失败请重新运行 /hap-mcp:setup"
+    fi
 fi
 
-# 4. 写入 token 文件
+# 5. 写入 token 文件
 echo -n "$SESSION_ID" > "$TOKEN_FILE"
 chmod 600 "$TOKEN_FILE" 2>/dev/null || true
-
-# 更新刷新时间戳
 touch "$MARKER_FILE" 2>/dev/null || true
 
 echo -e "  ${GREEN}✔${RESET}  ${BOLD}Token 已更新${RESET}  ${GRAY}${SESSION_ID:0:12}...${RESET}"

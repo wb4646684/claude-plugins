@@ -1,7 +1,7 @@
 {
   "name": "cos-mcp",
   "description": "腾讯云 COS 临时文件中转 MCP server（本地文件上传 → URL → 可传给其他需要 URL 的系统，如 HAP 附件字段）",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "author": {
     "name": "Jeffrey"
   },

@@ -1,6 +1,21 @@
 #!/usr/bin/env node
 'use strict';
 
+// 依赖检查
+const [nodeMajor] = process.versions.node.split('.').map(Number);
+if (nodeMajor < 18) {
+  console.error(`需要 Node.js 18+，当前版本 ${process.version}，请升级后重试`);
+  process.exit(1);
+}
+
+const { execSync } = require('child_process');
+try {
+  execSync('python3 -c "import qcloud_cos"', { stdio: 'ignore' });
+} catch (e) {
+  console.error('缺少 Python 依赖，请先运行：pip3 install mcp cos-python-sdk-v5');
+  process.exit(1);
+}
+
 const fs = require('fs');
 const os = require('os');
 const path = require('path');

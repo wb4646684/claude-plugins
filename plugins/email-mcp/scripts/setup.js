@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 'use strict';
 
+// 依赖检查
+const [nodeMajor] = process.versions.node.split('.').map(Number);
+if (nodeMajor < 18) {
+  console.error(`需要 Node.js 18+，当前版本 ${process.version}，请升级后重试`);
+  process.exit(1);
+}
+
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -180,6 +187,16 @@ function saveAccounts(accounts) {
   console.log(c.bold(c.green(`✅ 账号 "${entry.name}" 已${verb}`)));
   console.log(c.dim(`配置文件：${ACCOUNTS_FILE}`));
   console.log(c.dim(`当前账号：${accounts.map(a => a.name).join(', ')}`));
+
+  // 检查 npm 依赖是否已安装
+  const serverDir = path.join(__dirname, '../server');
+  const nmDir = path.join(serverDir, 'node_modules');
+  if (!fs.existsSync(nmDir)) {
+    console.log('');
+    console.log(c.yellow('⚠  npm 依赖尚未安装，MCP 无法启动，请先运行：'));
+    console.log(c.bold(`   cd ${serverDir} && npm install`));
+  }
+
   console.log(c.dim('运行 /reload-plugins 后生效'));
   console.log('');
 })().catch(e => { console.error(c.red('\n脚本异常：'), e); process.exit(1); });

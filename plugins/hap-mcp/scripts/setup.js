@@ -9,6 +9,13 @@
  */
 'use strict';
 
+// 依赖检查
+const [nodeMajor] = process.versions.node.split('.').map(Number);
+if (nodeMajor < 18) {
+  console.error(`需要 Node.js 18+，当前版本 ${process.version}，请升级后重试`);
+  process.exit(1);
+}
+
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');

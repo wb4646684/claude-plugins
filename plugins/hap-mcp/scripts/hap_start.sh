@@ -6,6 +6,11 @@
 TOKEN_FILE="${HAP_MCP_TOKEN:-$HOME/.config/hap-mcp/token}"
 MCP_BASE_URL="https://api2.mingdao.com/mcp"
 
+if ! command -v npx &>/dev/null; then
+    echo "hap-mcp 需要 Node.js 18+（npx），请先安装：https://nodejs.org/" >&2
+    exit 1
+fi
+
 if [ ! -f "$TOKEN_FILE" ]; then
     echo "HAP token not found at $TOKEN_FILE. Run /hap-mcp:setup first." >&2
     exit 1
