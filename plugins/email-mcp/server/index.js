@@ -9,58 +9,54 @@ const { ImapFlow } = require('imapflow');
 const { simpleParser } = require('mailparser');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
-// ── Config ──────────────────────────────────────────────────────────────────
-function loadCreds(filePath) {
-  const creds = {};
-  try {
-    const lines = require('fs').readFileSync(filePath, 'utf-8').split('\n');
-    for (const line of lines) {
-      const l = line.trim();
-      if (!l || l.startsWith('#')) continue;
-      const idx = l.indexOf('=');
-      if (idx < 0) continue;
-      const k = l.slice(0, idx).trim();
-      const v = l.slice(idx + 1).trim().replace(/^['"]|['"]$/g, '');
-      creds[k] = v;
-    }
-  } catch (e) {}
-  return creds;
+// ── Accounts ──────────────────────────────────────────────────────────────────
+const ACCOUNTS_FILE = process.env.EMAIL_ACCOUNTS_FILE
+  || path.join(os.homedir(), '.config', 'email-mcp', 'accounts.json');
+
+let accounts = [];
+try {
+  accounts = JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf-8'));
+} catch (e) {
+  process.stderr.write(`email-mcp: cannot load ${ACCOUNTS_FILE}: ${e.message}\n`);
+  process.exit(1);
+}
+if (!accounts.length) {
+  process.stderr.write(`email-mcp: no accounts configured in ${ACCOUNTS_FILE}\n`);
+  process.exit(1);
 }
 
-const _credFile = process.env.EMAIL_CREDENTIALS_FILE;
-const _creds = _credFile ? loadCreds(_credFile) : {};
-const _get = (key, def = '') => process.env[key] || _creds[key] || def;
+const accountNames = accounts.map(a => a.name);
 
-const SMTP_HOST = _get('SMTP_HOST');
-const SMTP_PORT = parseInt(_get('SMTP_PORT', '465'));
-const SMTP_SSL  = _get('SMTP_SSL', 'true') !== 'false';
-const SMTP_USER = _get('SMTP_USER');
-const SMTP_PASS = _get('SMTP_PASS');
-const DISPLAY_NAME = _get('DISPLAY_NAME') || SMTP_USER;
+function getAccount(name) {
+  if (!name) return accounts[0];
+  const a = accounts.find(a => a.name === name);
+  if (!a) throw new Error(`账号 "${name}" 不存在，可用账号：${accountNames.join(', ')}`);
+  return a;
+}
 
-const IMAP_HOST = _get('IMAP_HOST');
-const IMAP_PORT = parseInt(_get('IMAP_PORT', '993'));
-const IMAP_SSL  = _get('IMAP_SSL', 'true') !== 'false';
-const IMAP_USER = _get('IMAP_USER');
-const IMAP_PASS = _get('IMAP_PASS');
+const accountParam = z.string().optional().describe(
+  `邮箱账号名，可用：${accountNames.join(' / ')}；不填默认 ${accounts[0].name}`
+);
 
-function makeTransport() {
+// ── Transport helpers ─────────────────────────────────────────────────────────
+function makeTransport(a) {
   return nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_SSL,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
+    host: a.smtp_host,
+    port: a.smtp_port || 465,
+    secure: a.smtp_ssl !== false,
+    auth: { user: a.smtp_user, pass: a.smtp_pass },
     tls: { rejectUnauthorized: false },
   });
 }
 
-function makeImap() {
+function makeImap(a) {
   return new ImapFlow({
-    host: IMAP_HOST,
-    port: IMAP_PORT,
-    secure: IMAP_SSL,
-    auth: { user: IMAP_USER, pass: IMAP_PASS },
+    host: a.imap_host,
+    port: a.imap_port || 993,
+    secure: a.imap_ssl !== false,
+    auth: { user: a.imap_user, pass: a.imap_pass },
     logger: false,
     tls: { rejectUnauthorized: false },
   });
@@ -88,10 +84,10 @@ async function fetchRaw(client, folder, uid) {
   }
 }
 
-// ── MCP Server ───────────────────────────────────────────────────────────────
+// ── MCP Server ────────────────────────────────────────────────────────────────
 const server = new McpServer({ name: 'email', version: '1.0.0' });
 
-// ── Tool: send_email ─────────────────────────────────────────────────────────
+// ── send_email ────────────────────────────────────────────────────────────────
 server.tool(
   'send_email',
   '发送邮件，支持附件（传本地文件路径）',
@@ -106,11 +102,13 @@ server.tool(
       path:     z.string().describe('本地文件的绝对路径'),
       filename: z.string().optional().describe('附件显示名称，默认取文件名'),
     })).optional().describe('附件列表'),
+    account: accountParam,
   },
   async (args) => {
     try {
+      const a = getAccount(args.account);
       const mail = {
-        from: `${DISPLAY_NAME} <${SMTP_USER}>`,
+        from: `${a.display_name || a.smtp_user} <${a.smtp_user}>`,
         to: args.to,
         subject: args.subject,
         ...(args.text && { text: args.text }),
@@ -119,43 +117,45 @@ server.tool(
         ...(args.bcc && { bcc: args.bcc }),
       };
       if (args.attachments?.length) {
-        mail.attachments = args.attachments.map(a => ({
-          path: a.path,
-          filename: a.filename || path.basename(a.path),
+        mail.attachments = args.attachments.map(att => ({
+          path: att.path,
+          filename: att.filename || path.basename(att.path),
         }));
       }
-      const info = await makeTransport().sendMail(mail);
-      return { content: [{ type: 'text', text: `✅ 发送成功\nmessageId: ${info.messageId}` }] };
+      const info = await makeTransport(a).sendMail(mail);
+      return { content: [{ type: 'text', text: `✅ 发送成功 (${a.name})\nmessageId: ${info.messageId}` }] };
     } catch (e) {
       return { content: [{ type: 'text', text: `❌ 发送失败: ${e.message}` }] };
     }
   }
 );
 
-// ── Tool: list_folders ───────────────────────────────────────────────────────
-server.tool('list_folders', '列出邮箱所有文件夹', {}, async () => {
-  const c = makeImap();
+// ── list_folders ──────────────────────────────────────────────────────────────
+server.tool('list_folders', '列出邮箱所有文件夹', { account: accountParam }, async ({ account }) => {
+  const a = getAccount(account);
+  const c = makeImap(a);
   await c.connect();
   try {
     const list = await c.list();
-    const names = list.map(b => b.path).sort();
-    return { content: [{ type: 'text', text: names.join('\n') }] };
+    return { content: [{ type: 'text', text: list.map(b => b.path).sort().join('\n') }] };
   } finally {
     await c.logout();
   }
 });
 
-// ── Tool: list_emails ────────────────────────────────────────────────────────
+// ── list_emails ───────────────────────────────────────────────────────────────
 server.tool(
   'list_emails',
   '列出收件箱（或指定文件夹）的邮件，返回 uid/主题/发件人/日期',
   {
-    folder:      z.string().default('INBOX').describe('文件夹，默认 INBOX'),
-    limit:       z.number().int().default(20).describe('返回最新 N 封，默认 20'),
+    folder:      z.string().default('INBOX'),
+    limit:       z.number().int().default(20),
     unread_only: z.boolean().default(false).describe('仅未读邮件'),
+    account:     accountParam,
   },
-  async ({ folder, limit, unread_only }) => {
-    const c = makeImap();
+  async ({ folder, limit, unread_only, account }) => {
+    const a = getAccount(account);
+    const c = makeImap(a);
     await c.connect();
     try {
       const lock = await c.getMailboxLock(folder);
@@ -163,9 +163,8 @@ server.tool(
         const criteria = unread_only ? { seen: false } : { all: true };
         const uids = await c.search(criteria, { uid: true });
         if (!uids.length) return { content: [{ type: 'text', text: '没有邮件' }] };
-        const recent = uids.slice(-limit);
         const msgs = [];
-        for await (const msg of c.fetch(recent.join(','), { uid: true, envelope: true, flags: true }, { uid: true })) {
+        for await (const msg of c.fetch(uids.slice(-limit).join(','), { uid: true, envelope: true, flags: true }, { uid: true })) {
           msgs.push({
             uid:     msg.uid,
             subject: msg.envelope?.subject || '(无主题)',
@@ -185,22 +184,24 @@ server.tool(
   }
 );
 
-// ── Tool: get_email ──────────────────────────────────────────────────────────
+// ── get_email ─────────────────────────────────────────────────────────────────
 server.tool(
   'get_email',
-  '读取一封邮件的完整内容，返回正文和附件列表（附件序号用于 save_attachment）',
+  '读取一封邮件的完整内容，返回正文和附件列表',
   {
-    uid:    z.number().int().describe('邮件 uid，来自 list_emails 或 search_emails'),
-    folder: z.string().default('INBOX').describe('文件夹'),
+    uid:     z.number().int(),
+    folder:  z.string().default('INBOX'),
+    account: accountParam,
   },
-  async ({ uid, folder }) => {
-    const c = makeImap();
+  async ({ uid, folder, account }) => {
+    const a = getAccount(account);
+    const c = makeImap(a);
     await c.connect();
     try {
       const raw = await fetchRaw(c, folder, uid);
       if (!raw) return { content: [{ type: 'text', text: '未找到该邮件' }] };
       const p = await simpleParser(raw);
-      const result = {
+      return { content: [{ type: 'text', text: JSON.stringify({
         from:    p.from?.text  || '',
         to:      p.to?.text    || '',
         cc:      p.cc?.text    || '',
@@ -208,30 +209,25 @@ server.tool(
         date:    p.date?.toISOString() || '',
         text:    (p.text || '').slice(0, 10000),
         html_available: !!p.html,
-        attachments: (p.attachments || []).map((a, i) => ({
-          index:       i,
-          filename:    a.filename || `attachment_${i}`,
-          contentType: a.contentType,
-          size:        a.size,
+        attachments: (p.attachments || []).map((att, i) => ({
+          index: i, filename: att.filename || `attachment_${i}`,
+          contentType: att.contentType, size: att.size,
         })),
-      };
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      }, null, 2) }] };
     } finally {
       await c.logout();
     }
   }
 );
 
-// ── Tool: get_email_html ─────────────────────────────────────────────────────
+// ── get_email_html ────────────────────────────────────────────────────────────
 server.tool(
   'get_email_html',
-  '获取邮件的 HTML 正文（用于富文本邮件）',
-  {
-    uid:    z.coerce.number().int().describe('邮件 uid'),
-    folder: z.string().default('INBOX'),
-  },
-  async ({ uid, folder }) => {
-    const c = makeImap();
+  '获取邮件的 HTML 正文',
+  { uid: z.coerce.number().int(), folder: z.string().default('INBOX'), account: accountParam },
+  async ({ uid, folder, account }) => {
+    const a = getAccount(account);
+    const c = makeImap(a);
     await c.connect();
     try {
       const raw = await fetchRaw(c, folder, uid);
@@ -244,48 +240,52 @@ server.tool(
   }
 );
 
-// ── Tool: save_attachment ────────────────────────────────────────────────────
+// ── save_attachment ───────────────────────────────────────────────────────────
 server.tool(
   'save_attachment',
-  '将邮件附件保存到本地文件系统',
+  '将邮件附件保存到本地',
   {
-    uid:              z.coerce.number().int().describe('邮件 uid'),
-    attachment_index: z.coerce.number().int().describe('附件序号，来自 get_email 的 attachments[].index'),
-    save_path:        z.string().describe('保存的完整本地路径，如 /Users/xxx/Downloads/report.pdf'),
-    folder:           z.string().default('INBOX').describe('文件夹'),
+    uid:              z.coerce.number().int(),
+    attachment_index: z.coerce.number().int(),
+    save_path:        z.string(),
+    folder:           z.string().default('INBOX'),
+    account:          accountParam,
   },
-  async ({ uid, attachment_index, save_path, folder }) => {
-    const c = makeImap();
+  async ({ uid, attachment_index, save_path, folder, account }) => {
+    const a = getAccount(account);
+    const c = makeImap(a);
     await c.connect();
     try {
       const raw = await fetchRaw(c, folder, uid);
       if (!raw) return { content: [{ type: 'text', text: '未找到该邮件' }] };
       const p = await simpleParser(raw);
       const att = p.attachments?.[attachment_index];
-      if (!att) return { content: [{ type: 'text', text: `未找到附件序号 ${attachment_index}，共 ${p.attachments?.length || 0} 个附件` }] };
+      if (!att) return { content: [{ type: 'text', text: `未找到附件 ${attachment_index}，共 ${p.attachments?.length || 0} 个` }] };
       fs.mkdirSync(path.dirname(save_path), { recursive: true });
       fs.writeFileSync(save_path, att.content);
-      return { content: [{ type: 'text', text: `✅ 附件已保存到 ${save_path}（${att.size} 字节，${att.contentType}）` }] };
+      return { content: [{ type: 'text', text: `✅ 附件已保存到 ${save_path}（${att.size} 字节）` }] };
     } finally {
       await c.logout();
     }
   }
 );
 
-// ── Tool: search_emails ──────────────────────────────────────────────────────
+// ── search_emails ─────────────────────────────────────────────────────────────
 server.tool(
   'search_emails',
   '按条件搜索邮件（发件人/主题/日期范围）',
   {
     folder:  z.string().default('INBOX'),
-    from:    z.string().optional().describe('发件人包含（模糊）'),
-    subject: z.string().optional().describe('主题包含（模糊）'),
-    since:   z.string().optional().describe('日期起，格式 YYYY-MM-DD'),
-    before:  z.string().optional().describe('日期止，格式 YYYY-MM-DD'),
+    from:    z.string().optional(),
+    subject: z.string().optional(),
+    since:   z.string().optional().describe('YYYY-MM-DD'),
+    before:  z.string().optional().describe('YYYY-MM-DD'),
     limit:   z.number().int().default(20),
+    account: accountParam,
   },
-  async ({ folder, from, subject, since, before, limit }) => {
-    const c = makeImap();
+  async ({ folder, from, subject, since, before, limit, account }) => {
+    const a = getAccount(account);
+    const c = makeImap(a);
     await c.connect();
     try {
       const lock = await c.getMailboxLock(folder);
@@ -298,9 +298,8 @@ server.tool(
         if (!Object.keys(criteria).length) criteria.all = true;
         const uids = await c.search(criteria, { uid: true });
         if (!uids.length) return { content: [{ type: 'text', text: '未找到匹配邮件' }] };
-        const recent = uids.slice(-limit);
         const msgs = [];
-        for await (const msg of c.fetch(recent.join(','), { uid: true, envelope: true, flags: true }, { uid: true })) {
+        for await (const msg of c.fetch(uids.slice(-limit).join(','), { uid: true, envelope: true, flags: true }, { uid: true })) {
           msgs.push({
             uid:     msg.uid,
             subject: msg.envelope?.subject || '(无主题)',
@@ -320,17 +319,19 @@ server.tool(
   }
 );
 
-// ── Tool: mark_email ─────────────────────────────────────────────────────────
+// ── mark_email ────────────────────────────────────────────────────────────────
 server.tool(
   'mark_email',
   '标记邮件为已读或未读',
   {
-    uid:    z.number().int().describe('邮件 uid'),
-    folder: z.string().default('INBOX'),
-    action: z.enum(['read', 'unread']).describe('read=已读  unread=未读'),
+    uid:     z.number().int(),
+    folder:  z.string().default('INBOX'),
+    action:  z.enum(['read', 'unread']),
+    account: accountParam,
   },
-  async ({ uid, folder, action }) => {
-    const c = makeImap();
+  async ({ uid, folder, action, account }) => {
+    const a = getAccount(account);
+    const c = makeImap(a);
     await c.connect();
     try {
       const lock = await c.getMailboxLock(folder);
@@ -350,10 +351,21 @@ server.tool(
   }
 );
 
-// ── Start ────────────────────────────────────────────────────────────────────
+// ── list_accounts ─────────────────────────────────────────────────────────────
+server.tool(
+  'list_accounts',
+  '列出所有已配置的邮箱账号',
+  {},
+  async () => {
+    const list = accounts.map(a => `${a.name}  ${a.smtp_user}  (${a.smtp_host})`).join('\n');
+    return { content: [{ type: 'text', text: list }] };
+  }
+);
+
+// ── Start ─────────────────────────────────────────────────────────────────────
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`Email MCP (${SMTP_USER}) running`);
+  process.stderr.write(`email-mcp: ${accountNames.join(', ')} ready\n`);
 }
 main().catch(e => { console.error(e); process.exit(1); });

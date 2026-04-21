@@ -38,7 +38,7 @@
       "name": "email-mcp",
       "source": "./plugins/email-mcp",
       "description": "通用 SMTP/IMAP 邮件 MCP（QQ/163/企业邮/Gmail/Outlook 均可）",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "category": "mcp",
       "keywords": [
         "email",
