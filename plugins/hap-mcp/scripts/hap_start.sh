@@ -4,7 +4,7 @@
 # 由 setup.js 复制到 ~/.config/hap-mcp/hap_start.sh，路径固定不随插件版本变化。
 
 TOKEN_FILE="${HAP_MCP_TOKEN:-$HOME/.config/hap-mcp/token}"
-MCP_BASE_URL="https://api2.mingdao.com/mcp"
+MCP_BASE_URL="https://api.mingdao.com/mcp"
 
 if ! command -v npx &>/dev/null; then
     echo "hap-mcp 需要 Node.js 18+（npx），请先安装：https://nodejs.org/" >&2
