@@ -7,7 +7,7 @@
 ## 添加插件市场（只做一次）
 
 ```
-/plugin marketplace add wb4646684/claude-plugins
+/plugin marketplace add https://github.com/wb4646684/claude-plugins.git
 ```
 
 ---

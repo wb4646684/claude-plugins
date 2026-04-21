@@ -57,7 +57,7 @@ description: 交互式新建 Claude Code 插件：收集插件信息，生成完
 ```
 > 凭据路径用 `${HOME}/.config/<插件名>/credentials`，通过 env 传入，server 从文件读取。**不写入 `~/.claude.json`。**
 
-**`README.md`** — 包含：前置要求、安装步骤（`/plugin install` → setup → `/reload-plugins`）、配置文件说明、故障排查。
+**`README.md`** — 包含：前置要求、安装步骤（`/plugin install <名>@<marketplace>` → setup → `/reload-plugins`）、配置文件说明、故障排查。
 
 ### 按类型生成
 
@@ -71,7 +71,43 @@ description: 交互式新建 Claude Code 插件：收集插件信息，生成完
 
 **包含 skill 时**：`skills/<插件名>/SKILL.md` — 基础骨架，说明触发场景和可用工具
 
-**包含 hook 时**：`hooks/hooks.json` — SessionStart 骨架
+**包含 hook 时**：`hooks/hooks.json` — SessionStart 骨架，命令格式必须用带引号的 bash 调用：
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/on-session-start.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+对应脚本 `hooks/on-session-start.sh`，内容骨架：
+```bash
+#!/bin/bash
+LOG_FILE="$HOME/.config/<插件名>/<插件名>.log"
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
+# trim log to 200 lines
+[ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE")" -gt 200 ] && \
+    tail -200 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE"
+
+# ... 业务逻辑 ...
+
+log "OK    session hook 执行完成"
+```
+
+> **注意**：
+> - `${CLAUDE_PLUGIN_ROOT}` 在 hook command 和 plugin.json args 中均会被 Claude Code 展开
+> - 脚本**不需要** `chmod +x`，用 `bash "script"` 调用即可
+> - Hook 的 stdout/stderr **被 Claude Code 吞掉**，用户看不到终端输出，必须写日志文件
 
 ## 更新 marketplace.json
 
@@ -87,16 +123,46 @@ description: 交互式新建 Claude Code 插件：收集插件信息，生成完
 }
 ```
 
+## 更新根 README.md
+
+在 `$PLUGIN_REPO_PATH/README.md` 的「插件列表」表格追加一行：
+
+```markdown
+| **<插件名>** | <一句话描述> | [→ 安装说明](./plugins/<插件名>/README.md) |
+```
+
+**删除插件时同样要删除对应行。** 根 README 必须与 `marketplace.json` 保持一致。
+
 ## 完成
 
 列出所有已生成的文件路径，并提示：
 ```
 下一步：
   cd $PLUGIN_REPO_PATH
-  git add plugins/<插件名> .claude-plugin/marketplace.json
+  git add plugins/<插件名> .claude-plugin/marketplace.json README.md
   git commit -m "feat: add <插件名>"
   git push
 ```
+
+## 版本发布规范
+
+每次改动都要**同步更新两处版本号**，否则 marketplace update 不会通知用户有新版：
+- `plugins/<插件名>/.claude-plugin/plugin.json` → `"version"`
+- `.claude-plugin/marketplace.json` → 对应插件条目的 `"version"`
+
+## Marketplace 安装命令规范
+
+README 里的安装命令，非 GitHub 仓库必须用完整 `.git` HTTPS URL：
+```
+/plugin marketplace add https://your-gitlab.example.com/group/repo.git
+```
+不能用裸仓库 URL（返回 HTML 导致 schema 解析失败），也不能用 raw JSON URL（不会触发 git clone）。
+
+插件安装命令必须带 `@marketplace-name` 后缀：
+```
+/plugin install <插件名>@<marketplace-name>
+```
+只写 `/plugin install <插件名>` 依赖本地缓存，若 marketplace 未刷新（如刚推送新插件）会报 "not found"。`@marketplace-name` 明确指定来源，始终可用。
 
 ## 核心原则（生成代码时必须遵守）
 
@@ -104,3 +170,4 @@ description: 交互式新建 Claude Code 插件：收集插件信息，生成完
 - 凭据存 `~/.config/<插件名>/`，权限 600
 - 所有脚本在入口处检查依赖（`node --version`、`python3 -c "import xxx"`、`command -v curl`），缺失时打印安装提示后退出
 - API 错误提取：Python 用 `OK:<value>` / `ERROR:<msg>` 前缀模式，避免裸 `KeyError`
+- Hook 脚本必须写日志文件，日志保留最近 200 行

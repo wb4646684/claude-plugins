@@ -27,7 +27,7 @@
 **第一步：安装插件**
 
 ```
-/plugin marketplace add wb4646684/claude-plugins
+/plugin marketplace add https://github.com/wb4646684/claude-plugins.git
 /plugin install oldoa-mcp@wb4646684-plugins
 /reload-plugins
 ```

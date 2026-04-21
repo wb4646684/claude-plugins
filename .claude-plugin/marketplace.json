@@ -1,5 +1,6 @@
 {
   "name": "wb4646684-plugins",
+  "repository": "https://github.com/wb4646684/claude-plugins.git",
   "owner": {
     "name": "Jeffrey",
     "url": "https://github.com/wb4646684"
@@ -12,7 +13,7 @@
       "name": "hap-mcp",
       "source": "./plugins/hap-mcp",
       "description": "明道云 HAP MCP 连接器（含 session token 自动刷新脚本）",
-      "version": "1.1.6",
+      "version": "1.1.10",
       "category": "mcp",
       "keywords": [
         "hap",

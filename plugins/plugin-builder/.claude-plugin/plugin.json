@@ -5,7 +5,7 @@
   "author": {
     "name": "Jeffrey Zhang"
   },
-  "homepage": "https://github.com/wb4646684/claude-plugins/tree/main/plugins/plugin-builder",
+  "homepage": "https://github.com/wb4646684/claude-plugins/-/tree/main/plugins/plugin-builder",
   "repository": "https://github.com/wb4646684/claude-plugins",
   "license": "MIT",
   "keywords": ["plugin", "builder", "scaffold", "mcp", "skills"],

@@ -17,6 +17,15 @@ RESET='\033[0m'
 CRED_FILE="${HAP_MCP_CREDENTIALS:-$HOME/.config/hap-mcp/credentials}"
 TOKEN_FILE="${HAP_MCP_TOKEN:-$(dirname "$CRED_FILE")/token}"
 LOGIN_URL="https://www.mingdao.com/api/Login/MDAccountLogin"
+LOG_FILE="${HAP_MCP_LOG:-$(dirname "$CRED_FILE")/hap_reauth.log}"
+
+# ---------- 日志 ----------
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
+# 日志保留最近 200 行
+trim_log() {
+    [ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE")" -gt 200 ] && \
+        tail -200 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE"
+}
 
 # ---------- 工具函数 ----------
 header() {
@@ -63,12 +72,8 @@ if [ -f "$MARKER_FILE" ]; then
     mtime=$(stat -f %m "$MARKER_FILE" 2>/dev/null || stat -c %Y "$MARKER_FILE" 2>/dev/null || echo 0)
     age=$(( now - mtime ))
     if [ "$age" -lt "$FRESH_SECONDS" ]; then
-        if [ "${HAP_MCP_QUIET:-1}" = "1" ]; then
-            exit 0
-        fi
-        header "$CYAN"
-        echo -e "  ${CYAN}⏭${RESET}  ${DIM}token 还新鲜（${age}s 前刷过，阈值 ${FRESH_SECONDS}s）${RESET}"
-        echo ""
+        log "SKIP  token 还新鲜（${age}s 前刷过，阈值 ${FRESH_SECONDS}s）"
+        echo -e "  ${CYAN}◆ HAP${RESET}  token 还新鲜，跳过刷新（${age}s 前刷过）"
         exit 0
     fi
 fi
@@ -149,6 +154,7 @@ else
     elif echo "$ERR_MSG" | grep -q "密码\|账号\|不存在"; then
         die "鉴权失败：$ERR_MSG" "账号或密码错误，请重新运行 /hap-mcp:setup"
     else
+            log "ERROR 鉴权失败：$ERR_MSG"
         die "鉴权失败：$ERR_MSG" "如持续失败请重新运行 /hap-mcp:setup"
     fi
 fi
@@ -165,5 +171,7 @@ if [ -n "$ACCOUNT_ID" ] && [ ! -f "$ACCOUNT_ID_FILE" ]; then
     chmod 600 "$ACCOUNT_ID_FILE" 2>/dev/null || true
 fi
 
+log "OK    token 已更新  ${SESSION_ID:0:12}..."
+trim_log
 echo -e "  ${GREEN}✔${RESET}  ${BOLD}Token 已更新${RESET}  ${GRAY}${SESSION_ID:0:12}...${RESET}"
 echo ""

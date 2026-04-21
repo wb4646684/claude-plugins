@@ -23,7 +23,7 @@
 在 Claude Code 里依次执行：
 
 ```
-/plugin marketplace add wb4646684/claude-plugins
+/plugin marketplace add https://github.com/wb4646684/claude-plugins.git
 /plugin install hap-mcp@wb4646684-plugins
 /reload-plugins
 ```
@@ -57,7 +57,7 @@ Claude Code 启动
        └─ 写 ~/.config/hap-mcp/token（新 sessionId）
 
 MCP 进程（stdio）
-  └─ hap_start.sh → 读 token → mcp-remote https://api2.mingdao.com/mcp?Authorization=...
+  └─ hap_start.sh → 读 token → mcp-remote https://api.mingdao.com/mcp?Authorization=...
 ```
 
 **插件不修改 `~/.claude.json`**。MCP 注册由插件系统通过 `plugin.json` 完成。凭据和 token 均存放在 `~/.config/hap-mcp/`，与其他工具配置隔离。
@@ -88,6 +88,7 @@ MCP 进程（stdio）
 | `~/.config/hap-mcp/token` | 当前 sessionId（每次启动 Claude 自动刷新） |
 | `~/.config/hap-mcp/account_id` | 当前账号的 accountId（首次登录自动写入） |
 | `~/.config/hap-mcp/.last_refresh` | 上次刷新时间戳（避免频繁刷新） |
+| `~/.config/hap-mcp/hap_reauth.log` | token 刷新日志，保留最近 200 行 |
 
 `account_id` 可在 skill / 脚本中直接读取，用作 HAP 记录的默认负责人：
 

@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hap_reauth.sh"
+            "command": "bash -c 'find $HOME/.claude/plugins/cache/wb4646684-plugins/hap-mcp -name hap_reauth.sh | sort -rV | head -1 | xargs bash'"
           }
         ]
       }
