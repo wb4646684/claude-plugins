@@ -1,0 +1,12 @@
+{
+  "name": "hap-dev",
+  "description": "HAP 研发工作流 Skills：BUG/开发任务待办、bugfix 分支创建、MR 提交与状态回写、Jenkins 发布",
+  "version": "1.1.0",
+  "author": {
+    "name": "Jerry Jin"
+  },
+  "homepage": "https://github.com/wb4646684/claude-plugins/tree/main/plugins/hap-dev",
+  "license": "MIT",
+  "keywords": ["hap", "mingdao", "bug", "dev", "skills", "gitlab", "mr", "jenkins", "publish"],
+  "category": "skills"
+}
