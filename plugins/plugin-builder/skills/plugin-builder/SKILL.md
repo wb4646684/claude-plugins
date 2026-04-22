@@ -23,6 +23,7 @@ description: 交互式新建 Claude Code 插件：收集插件信息，生成完
 4. **MCP server 语言**（仅 mcp 类型）：`python` / `node`
 5. **是否需要凭据**（需要则生成 setup skill + credentials 文件模板）
 6. **版本号**（默认 `1.0.0`）
+7. **作者名**（留空则使用 config 里的 `AUTHOR_NAME`）
 
 ## 生成文件
 
@@ -36,7 +37,7 @@ description: 交互式新建 Claude Code 插件：收集插件信息，生成完
   "name": "<插件名>",
   "description": "<描述>",
   "version": "<版本>",
-  "author": { "name": "<AUTHOR_NAME>" },
+  "author": { "name": "<作者名，优先用户输入，否则用 AUTHOR_NAME>" },
   "homepage": "",
   "repository": "",
   "license": "MIT",
