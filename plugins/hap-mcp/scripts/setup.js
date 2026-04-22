@@ -24,7 +24,7 @@ const https = require('https');
 const readline = require('readline');
 const { execSync } = require('child_process');
 
-// ---- 错误上报（公开表单，经用户确认后提交）----
+// ---- 错误上报（公开表单，仅交互模式下询问用户后提交）----
 async function reportError(step, errorMsg) {
   if (!process.stdin.isTTY) return;
   const sanitize = s => String(s)
@@ -40,7 +40,7 @@ async function reportError(step, errorMsg) {
   const DIM = s => `\x1b[2m${s}\x1b[0m`, YELLOW = s => `\x1b[33m${s}\x1b[0m`;
   console.log('');
   console.log(YELLOW('  是否提交错误报告帮助改进插件？（不包含账号密码）'));
-  console.log(DIM(`  将上报：插件名=hap-mcp  版本=1.1.6  系统=${osLabel} ${osVer}  AI=${aiVer}`));
+  console.log(DIM(`  将上报：插件名=hap-mcp  版本=1.1.13  系统=${osLabel} ${osVer}  AI=${aiVer}`));
   console.log(DIM(`  报错内容：${cleanMsg}`));
   process.stdout.write('  [y/N] > ');
   const answer = await new Promise(resolve => {
@@ -51,7 +51,7 @@ async function reportError(step, errorMsg) {
   const body = JSON.stringify({ worksheetId: '69e7045f9513a27f83d3ccbd', receiveControls: [
     { controlId: '69e7045ff93dd47d496c0ece', type: 2, value: `hap-mcp 安装报错：${step}`, controlName: '标题', dot: 0 },
     { controlId: '69e7045ff93dd47d496c0ecf', type: 9, value: JSON.stringify(['4ad4726b-2d82-4f22-8f4f-a02cd8489ef8']), controlName: '插件名', dot: 0 },
-    { controlId: '69e7045ff93dd47d496c0ed0', type: 2, value: '1.1.6', controlName: '版本号', dot: 0 },
+    { controlId: '69e7045ff93dd47d496c0ed0', type: 2, value: '1.1.13', controlName: '版本号', dot: 0 },
     { controlId: '69e7045ff93dd47d496c0ed1', type: 2, value: step, controlName: '步骤', dot: 0 },
     { controlId: '69e7045ff93dd47d496c0ed2', type: 2, value: cleanMsg, controlName: '报错内容', dot: 0 },
     { controlId: '69e7045ff93dd47d496c0ed3', type: 9, value: JSON.stringify([process.platform === 'darwin' ? '2970e8ef-1a7c-4060-b97b-12221ed8919c' : '3ed18664-4e5d-4ff7-9356-3f323d147d21']), controlName: '操作系统', dot: 0 },
@@ -116,9 +116,9 @@ function askHidden(prompt) {
     process.stdin.setEncoding('utf8');
     let pw = '';
     const onData = ch => {
-      if (ch === '\u0003') { process.stdout.write('\n'); process.stdin.setRawMode(false); process.stdin.pause(); process.stdin.removeListener('data', onData); reject(new Error('Cancelled')); }
-      else if (ch === '\r' || ch === '\n' || ch === '\u0004') { process.stdout.write('\n'); process.stdin.setRawMode(false); process.stdin.pause(); process.stdin.removeListener('data', onData); resolve(pw); }
-      else if (ch === '\u007f' || ch === '\b') { if (pw.length) pw = pw.slice(0, -1); }
+      if (ch === '') { process.stdout.write('\n'); process.stdin.setRawMode(false); process.stdin.pause(); process.stdin.removeListener('data', onData); reject(new Error('Cancelled')); }
+      else if (ch === '\r' || ch === '\n' || ch === '') { process.stdout.write('\n'); process.stdin.setRawMode(false); process.stdin.pause(); process.stdin.removeListener('data', onData); resolve(pw); }
+      else if (ch === '' || ch === '\b') { if (pw.length) pw = pw.slice(0, -1); }
       else { pw += ch; }
     };
     process.stdin.on('data', onData);
@@ -153,6 +153,24 @@ function parseArgs(argv) {
   }
   return args;
 }
+
+const ACCOUNT_RESULT = {
+  0:  ['登录失败', '账号或密码有误，请重试'],
+  2:  ['账号不存在', '检查账号是否拼写正确'],
+  3:  ['密码错误', '密码有误，请重试'],
+  4:  ['验证码错误', '前台验证码输入错误'],
+  5:  ['需要图形验证码', '登录过于频繁，请先在浏览器登录一次明道云后重试'],
+  7:  ['账号不存在', '该账号在 www.mingdao.com 上不存在；若您使用私有部署，请确认域名是否正确'],
+  8:  ['账号来源受限', '该账号的登录来源类型被禁止'],
+  9:  ['账号已锁定', '账号已被禁用，请联系管理员'],
+  10: ['需要两步验证', '账号开启了两步验证，暂不支持通过脚本登录'],
+  11: ['验证码已过期', '验证码已失效，请重新操作'],
+  12: ['账号被锁定', '登录过于频繁，账号已被临时锁定，请稍后再试'],
+  13: ['需要重置密码', '首次登录需要先在浏览器修改密码后再试'],
+  14: ['密码已过期', '请先在浏览器修改密码后再试'],
+  15: ['账号注销中', '该账号已申请注销'],
+  16: ['需集成账号登录', '该账号只能通过 SSO/集成账号登录，不支持密码登录'],
+};
 
 (async () => {
   const cli = parseArgs(process.argv.slice(2));
@@ -207,23 +225,6 @@ function parseArgs(argv) {
   process.stdout.write('\r' + ' '.repeat(40) + '\r');
 
   if (!resp?.data?.sessionId) {
-    const ACCOUNT_RESULT = {
-      0:  ['登录失败', '账号或密码有误，请重试'],
-      2:  ['账号不存在', '检查账号是否拼写正确'],
-      3:  ['密码错误', '密码有误，请重试'],
-      4:  ['验证码错误', '前台验证码输入错误'],
-      5:  ['需要图形验证码', '登录过于频繁，请先在浏览器登录一次明道云后重试'],
-      7:  ['账号不存在', '该账号在 www.mingdao.com 上不存在；若您使用私有部署，请确认域名是否正确'],
-      8:  ['账号来源受限', '该账号的登录来源类型被禁止'],
-      9:  ['账号已锁定', '账号已被禁用，请联系管理员'],
-      10: ['需要两步验证', '账号开启了两步验证，暂不支持通过脚本登录'],
-      11: ['验证码已过期', '验证码已失效，请重新操作'],
-      12: ['账号被锁定', '登录过于频繁，账号已被临时锁定，请稍后再试'],
-      13: ['需要重置密码', '首次登录需要先在浏览器修改密码后再试'],
-      14: ['密码已过期', '请先在浏览器修改密码后再试'],
-      15: ['账号注销中', '该账号已申请注销'],
-      16: ['需集成账号登录', '该账号只能通过 SSO/集成账号登录，不支持密码登录'],
-    };
     const code = resp?.data?.accountResult;
     const [title, hint] = ACCOUNT_RESULT[code] ?? ['鉴权失败', null];
     const rawMsg = resp?.exception || resp?.msg || resp?.message || JSON.stringify(resp);

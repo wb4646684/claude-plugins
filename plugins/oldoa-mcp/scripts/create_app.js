@@ -204,7 +204,28 @@ function extractCode(input) {
 }
 
 // ── API wrappers ────────────────────────────────────────────────────────────
+const ACCOUNT_RESULT = {
+  0:  ['登录失败', '账号或密码有误，请重试'],
+  2:  ['账号不存在', '检查账号是否拼写正确'],
+  3:  ['密码错误', '密码有误，请重试'],
+  4:  ['验证码错误', '前台验证码输入错误'],
+  5:  ['需要图形验证码', '登录过于频繁，请先在浏览器登录一次明道云后重试'],
+  7:  ['账号不存在', '该账号在 www.mingdao.com 上不存在；若您使用私有部署，请确认域名是否正确'],
+  8:  ['账号来源受限', '该账号的登录来源类型被禁止'],
+  9:  ['账号已锁定', '账号已被禁用，请联系管理员'],
+  10: ['需要两步验证', '账号开启了两步验证，暂不支持通过脚本登录'],
+  11: ['验证码已过期', '验证码已失效，请重新操作'],
+  12: ['账号被锁定', '登录过于频繁，账号已被临时锁定，请稍后再试'],
+  13: ['需要重置密码', '首次登录需要先在浏览器修改密码后再试'],
+  14: ['密码已过期', '请先在浏览器修改密码后再试'],
+  15: ['账号注销中', '该账号已申请注销'],
+  16: ['需集成账号登录', '该账号只能通过 SSO/集成账号登录，不支持密码登录'],
+};
+
 async function login(account, password) {
+  // 11位手机号自动补 +86
+  if (/^1[3-9]\d{9}$/.test(account)) account = '+86' + account;
+
   const body = JSON.stringify({
     account: encrypt(account),
     password: encrypt(password),
@@ -219,7 +240,12 @@ async function login(account, password) {
   });
   let json;
   try { json = JSON.parse(res.body); } catch (e) { throw new Error(`Login 响应不是 JSON: ${res.body.slice(0, 200)}`); }
-  if (!json?.data?.sessionId) throw new Error(`登录失败: ${JSON.stringify(json).slice(0, 300)}`);
+  if (!json?.data?.sessionId) {
+    const code = json?.data?.accountResult;
+    const [title, hint] = ACCOUNT_RESULT[code] ?? ['登录失败', null];
+    const detail = hint ? `${title} — ${hint}` : `${title}: ${JSON.stringify(json).slice(0, 200)}`;
+    throw new Error(detail);
+  }
   return json.data.sessionId;
 }
 
