@@ -184,6 +184,12 @@ function parseArgs(argv) {
     process.exit(1);
   }
 
+  // 11位手机号自动补 +86
+  if (/^1[3-9]\d{9}$/.test(account)) {
+    account = '+86' + account;
+    console.log(c.dim(`手机号已自动补全：${account}`));
+  }
+
   process.stdout.write(c.dim('正在加密并验证...'));
   const encAccount  = encrypt(account);
   const encPassword = encrypt(password);
