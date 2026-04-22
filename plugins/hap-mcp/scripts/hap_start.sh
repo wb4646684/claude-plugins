@@ -6,6 +6,18 @@
 TOKEN_FILE="${HAP_MCP_TOKEN:-$HOME/.config/hap-mcp/token}"
 MCP_BASE_URL="https://api.mingdao.com/mcp"
 
+if ! command -v node &>/dev/null; then
+    echo "hap-mcp 需要 Node.js 18+，未检测到 node，请先安装：https://nodejs.org/" >&2
+    exit 1
+fi
+
+NODE_MAJOR=$(node -e "process.stdout.write(process.versions.node.split('.')[0])" 2>/dev/null)
+if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 18 ]; then
+    echo "hap-mcp 需要 Node.js 18+，当前版本 $(node --version)，请升级后重新运行 /hap-mcp:setup" >&2
+    echo "  macOS: brew install node  或  https://nodejs.org/" >&2
+    exit 1
+fi
+
 if ! command -v npx &>/dev/null; then
     echo "hap-mcp 需要 Node.js 18+（npx），请先安装：https://nodejs.org/" >&2
     exit 1
